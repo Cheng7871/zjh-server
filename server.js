@@ -8,15 +8,58 @@ app.use(express.static(path.join(__dirname, './')));
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// 房间数据
 let room = {
     playerA: { ws: null, name: "1", chip: 1000, ready: false },
     playerB: { ws: null, name: "2", chip: 1000, ready: false },
     pool: 200,
-    cards: {A:[], B:[]}
+    cards: {A:[], B:[]},
+    gameOver: false
 };
 
-// 生成3张手牌
+// 牌权重映射
+const rankWeight = {"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"J":11,"Q":12,"K":13,"A":14};
+
+// 解析手牌，返回牌型权重，越大越强
+function parseCards(cardList){
+    const ranks = [];
+    const suits = [];
+    cardList.forEach(c=>{
+        let r = c.replace(/[♠♥♦♣]/g,"");
+        let s = c.replace(/[0-9JQKA]/g,"");
+        ranks.push(rankWeight[r]);
+        suits.push(s);
+    })
+    ranks.sort((a,b)=>b-a);
+    const isSameSuit = suits[0]===suits[1] && suits[1]===suits[2];
+    const sorted = [...ranks].sort((a,b)=>a-b);
+    const isStraight = (sorted[0]+1 === sorted[1] && sorted[1]+1 === sorted[2]);
+    const set = new Set(ranks);
+
+    if(set.size ===1) return {type:6, val:ranks[0], name:"豹子"};
+    if(isSameSuit && isStraight) return {type:5, val:ranks[0], name:"顺金"};
+    if(isSameSuit) return {type:4, val:ranks[0], name:"金花"};
+    if(isStraight) return {type:3, val:ranks[0], name:"顺子"};
+    if(set.size ===2) return {type:2, val:ranks[0], name:"对子"};
+    return {type:1, val:ranks[0], name:"单张"};
+}
+
+// 对比 A、B牌，返回赢家 A / B
+function compareCard(cardA, cardB){
+    const a = parseCards(cardA);
+    const b = parseCards(cardB);
+    if(a.type > b.type) return "A";
+    if(a.type < b.type) return "B";
+    return a.val >= b.val ? "A":"B";
+}
+
+function sendTo(ws, data){
+    ws.send(JSON.stringify(data));
+}
+function broadcast(data){
+    if(room.playerA.ws) room.playerA.ws.send(JSON.stringify(data));
+    if(room.playerB.ws) room.playerB.ws.send(JSON.stringify(data));
+}
+
 function createCards() {
     const ranks = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
     const suits = ["♠","♥","♦","♣"];
@@ -28,21 +71,10 @@ function createCards() {
     return {A:cardA, B:cardB};
 }
 
-// 单独发给单个玩家
-function sendTo(ws, data){
-    ws.send(JSON.stringify(data));
-}
-// 广播给两个玩家
-function broadcast(data){
-    if(room.playerA.ws) room.playerA.ws.send(JSON.stringify(data));
-    if(room.playerB.ws) room.playerB.ws.send(JSON.stringify(data));
-}
-
 wss.on('connection', (ws) => {
     ws.on('message', (rawMsg) => {
         const data = JSON.parse(rawMsg.toString());
 
-        // 登录逻辑：提交名字绑定角色
         if(data.type === "login"){
             const userName = data.name.trim();
             if(userName === "1"){
@@ -66,25 +98,24 @@ wss.on('connection', (ws) => {
             }
         }
 
-        // 玩家点击准备
         if(data.type === "ready"){
             if(data.role === "A") room.playerA.ready = true;
             if(data.role === "B") room.playerB.ready = true;
-            //两人全部准备完毕，倒计时发牌
             if(room.playerA.ready && room.playerB.ready){
                 broadcast({type:"countdownStart"});
                 setTimeout(()=>{
                     const cardResult = createCards();
                     room.cards.A = cardResult.A;
                     room.cards.B = cardResult.B;
+                    room.gameOver = false;
                     sendTo(room.playerA.ws, {type:"newCard", myCards:room.cards.A, enemyCards:room.cards.B});
                     sendTo(room.playerB.ws, {type:"newCard", myCards:room.cards.B, enemyCards:room.cards.A});
                 },3000);
             }
         }
 
-        //下注逻辑
         if(data.type === "bet"){
+            if(room.gameOver) return;
             const betNum = data.num;
             if(data.role === "A"){
                 if(betNum > room.playerA.chip){
@@ -109,15 +140,59 @@ wss.on('connection', (ws) => {
             })
         }
 
-        //弃牌
         if(data.type === "fold"){
-            broadcast({type:"fold", who:data.role});
+            if(room.gameOver) return;
+            room.gameOver = true;
+            let winner = data.role === "A" ? "B":"A";
+            if(winner === "A"){
+                room.playerA.chip += room.pool;
+            }else{
+                room.playerB.chip += room.pool;
+            }
+            broadcast({
+                type:"result",
+                winner:winner,
+                pool:room.pool,
+                msg:`玩家${data.role}弃牌！玩家${winner}赢走底池${room.pool}`
+            });
+            room.pool = 200;
+            broadcast({
+                type:"syncState",
+                chipA: room.playerA.chip,
+                chipB: room.playerB.chip,
+                pool: room.pool
+            })
         }
-        //开牌
+
         if(data.type === "openCard"){
-            broadcast({type:"showAllCard"});
+            if(room.gameOver) return;
+            room.gameOver = true;
+            const winner = compareCard(room.cards.A, room.cards.B);
+            if(winner === "A"){
+                room.playerA.chip += room.pool;
+            }else{
+                room.playerB.chip += room.pool;
+            }
+            broadcast({
+                type:"showAllCard"
+            });
+            setTimeout(()=>{
+                broadcast({
+                    type:"result",
+                    winner:winner,
+                    pool:room.pool,
+                    msg:`开牌结算！玩家${winner}赢走底池${room.pool}`
+                });
+                room.pool = 200;
+                broadcast({
+                    type:"syncState",
+                    chipA: room.playerA.chip,
+                    chipB: room.playerB.chip,
+                    pool: room.pool
+                })
+            },1200)
         }
-        //重置整局游戏
+
         if(data.type === "reset"){
             room.playerA.ready = false;
             room.playerB.ready = false;
@@ -125,6 +200,7 @@ wss.on('connection', (ws) => {
             room.playerB.chip = 1000;
             room.pool = 200;
             room.cards = {A:[], B:[]};
+            room.gameOver = false;
             broadcast({
                 type:"reset",
                 chipA: room.playerA.chip,
@@ -134,7 +210,6 @@ wss.on('connection', (ws) => {
         }
     })
 
-    //玩家断开连接，释放席位
     ws.on('close', ()=>{
         if(room.playerA.ws === ws){
             room.playerA.ws = null;
