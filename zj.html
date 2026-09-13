@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>联机炸金花</title>
+    <style>
+        * {box-sizing: border-box; font-family: sans-serif;}
+        body {background: #182040; color:white; padding:16px; margin:0; position:relative;}
+        .box {border:1px solid #778; border-radius:10px; padding:12px; margin-bottom:16px;}
+        .cardWrap {display:flex; gap:8px; margin:10px 0;}
+        .card {width:80px; height:110px; background:#223366; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:bold;}
+        .card-back {background:#112244; color:transparent;}
+        button {padding:14px 20px; font-size:17px; margin:4px; border:none; border-radius:6px; cursor:pointer;}
+        input {padding:12px; font-size:17px; border-radius:6px; border:none; width:160px; margin:4px;}
+        #countdown {font-size:48px; color:#ffcc00; text-align:center; margin:15px 0;}
+        #secretBtn {
+            position:fixed;
+            right:12px;
+            top:12px;
+            width:42px;
+            height:42px;
+            border-radius:50%;
+            font-size:22px;
+            background:#334;
+            color:#fff;
+            border:1px solid #889;
+        }
+        .modal{
+            display:none;
+            position:fixed;
+            top:0;left:0;right:0;bottom:0;
+            background:rgba(0,0,0,0.75);
+            align-items:center;
+            justify-content:center;
+            z-index:99;
+        }
+        .modal-box{
+            background:#222844;
+            padding:20px;
+            border-radius:10px;
+        }
+        #loginModal{display:flex;}
+        #resultModal{text-align:center;}
+        #nextRoundModal{text-align:center;}
+        #timerModal{text-align:center;}
+    </style>
+</head>
+<body>
+    <h2>联机炸金花</h2>
+
+    <!-- 登录弹窗 -->
+    <div id="loginModal" class="modal">
+        <div class="modal-box">
+            <h3>输入名字进入游戏（只能填 1 或 2）</h3>
+            <input type="text" id="nameInput" placeholder="输入 1 或者 2">
+            <br>
+            <button onclick="login()">登录进入</button>
+        </div>
+    </div>
+
+    <!-- 对局结果弹窗 -->
+    <div id="resultModal" class="modal">
+        <div class="modal-box">
+            <h2 id="resultText"></h2>
+            <button onclick="closeResultModal()">确定</button>
+        </div>
+    </div>
+
+    <!-- 下一局确认弹窗 -->
+    <div id="nextRoundModal" class="modal">
+        <div class="modal-box">
+            <h2>本局结束</h2>
+            <p>等待双方确认开启下一把</p>
+            <button id="btnNextRound" onclick="requestNextRound()">下一把</button>
+        </div>
+    </div>
+
+    <!-- 3秒倒计时弹窗 -->
+    <div id="timerModal" class="modal">
+        <div class="modal-box">
+            <h2>下一局即将开始</h2>
+            <div id="timerNum" style="font-size:60px;color:gold">3</div>
+        </div>
+    </div>
+
+    <div class="box">
+        <div id="chipBar">
+            <span id="selfLabel">玩家A筹码</span>：<span id="myChip">1000</span>w | 
+            <span id="enemyLabel">玩家B筹码</span>：<span id="enemyChip">1000</span>w | 
+            底池：<span id="pool">200</span>w
+        </div>
+    </div>
+
+    <div id="countdown"></div>
+    <div style="margin:10px 0">
+        <button id="readyBtn" onclick="playerReady()" disabled>准备</button>
+    </div>
+
+    <div class="box">
+        <h3>你的手牌</h3>
+        <div class="cardWrap" id="myCards"></div>
+    </div>
+    <div class="box">
+        <h3>对手手牌</h3>
+        <div class="cardWrap" id="enemyCards"></div>
+    </div>
+
+    <div>
+        <input type="number" id="betInput" placeholder="输入下注数额">
+        <button onclick="bet()">下注</button>
+        <button onclick="fold()">弃牌</button>
+        <button onclick="openCard()">开牌</button>
+        <button onclick="resetGame()">重置游戏</button>
+    </div>
+
+    <!-- 右上角后台按钮 -->
+    <button id="secretBtn" onclick="openPwdModal()">7</button>
+
+    <!-- 密码弹窗 -->
+    <div id="pwdModal" class="modal">
+        <div class="modal-box">
+            <h3>请输入密码</h3>
+            <input type="password" id="pwdInput" placeholder="密码">
+            <br>
+            <button onclick="checkPassword()">确认</button>
+            <button onclick="closePwdModal()">关闭</button>
+        </div>
+    </div>
+
+    <!-- 后台设置弹窗【已修改】 -->
+    <div id="settingModal" class="modal">
+        <div class="modal-box">
+            <h3>后台设置</h3>
+            <div>A爆率(0~100)：<input type="number" id="pRate" min="0" max="100"></div>
+            <div>B爆率(0~100)：<input type="number" id="eRate" min="0" max="100"></div>
+            <div>豹子%：<input type="number" id="rateBao" min="0" max="100"></div>
+            <div>顺子%：<input type="number" id="rateShun" min="0" max="100"></div>
+            <div>金花%：<input type="number" id="rateJin" min="0" max="100"></div>
+            <div>天牌%：<input type="number" id="rateTian" min="0" max="100"></div>
+            <div>玩家A筹码：<input type="number" id="setMyChip"></div>
+            <div>玩家B筹码：<input type="number" id="setEnemyChip"></div>
+            <div>底池：<input type="number" id="setPool"></div>
+            <br>
+            <button onclick="saveSetting()">保存并同步给双方</button>
+            <button onclick="closeSettingModal()">关闭</button>
+        </div>
+    </div>
+
+<script>
+let A_RATE = 100;
+let B_RATE = 100;
+let rateBao = 10;
+let rateShun = 12;
+let rateJin = 15;
+let rateTian = 2;
+const ADMIN_PASSWORD = "123456";
+
+const ws = new WebSocket(location.origin.replace("https","wss"));
+let myRole = "";
+let gameState = {
+    chipA:1000,
+    chipB:1000,
+    pool:200,
+    myCards:[],
+    enemyCards:[],
+    showEnemyCard:false,
+    nextConfirmA: false,
+    nextConfirmB: false,
+    roundEnd: false
+};
+
+function login(){
+    const name = document.getElementById("nameInput").value.trim();
+    ws.send(JSON.stringify({type:"login", name:name}));
+}
+function closeResultModal(){document.getElementById("resultModal").style.display="none";}
+function openNextRoundModal(){
+    document.getElementById("nextRoundModal").style.display="flex";
+}
+function requestNextRound(){
+    ws.send(JSON.stringify({type:"requestNextRound", role:myRole}));
+    document.getElementById("btnNextRound").disabled = true;
+    document.getElementById("btnNextRound").innerText = "已等待对手...";
+}
+// 3秒倒计时函数
+function start3sCountDown(){
+    document.getElementById("timerModal").style.display = "flex";
+    let t = 3;
+    document.getElementById("timerNum").innerText = t;
+    const timer = setInterval(()=>{
+        t--;
+        document.getElementById("timerNum").innerText = t;
+        if(t <= 0){
+            clearInterval(timer);
+            document.getElementById("timerModal").style.display = "none";
+            ws.send(JSON.stringify({type:"newRound"}));
+        }
+    },1000)
+}
+
+function render(){
+    if(myRole === "A"){
+        document.getElementById("selfLabel").innerText = "玩家A筹码";
+        document.getElementById("enemyLabel").innerText = "玩家B筹码";
+    }else if(myRole === "B"){
+        document.getElementById("selfLabel").innerText = "玩家B筹码";
+        document.getElementById("enemyLabel").innerText = "玩家A筹码";
+    }
+    document.getElementById("myChip").innerText = myRole==="A" ? gameState.chipA : gameState.chipB;
+    document.getElementById("enemyChip").innerText = myRole==="A" ? gameState.chipB : gameState.chipA;
+    document.getElementById("pool").innerText = gameState.pool;
+
+    let myHtml = "";
+    gameState.myCards.forEach(c=> myHtml += `<div class="card">${c}</div>`)
+    document.getElementById("myCards").innerHTML = myHtml;
+
+    let enemyHtml = "";
+    if(gameState.showEnemyCard){
+        gameState.enemyCards.forEach(c=> enemyHtml += `<div class="card">${c}</div>`)
+    }else{
+        gameState.enemyCards.forEach(()=> enemyHtml += `<div class="card card-back">?</div>`)
+    }
+    document.getElementById("enemyCards").innerHTML = enemyHtml;
+}
+
+//后台弹窗函数
+function openPwdModal(){document.getElementById("pwdModal").style.display="flex";}
+function closePwdModal(){document.getElementById("pwdModal").style.display="none";document.getElementById("pwdInput").value="";}
+function checkPassword(){
+    const pwd = document.getElementById("pwdInput").value.trim();
+    if(pwd === ADMIN_PASSWORD){
+        closePwdModal();
+        document.getElementById("settingModal").style.display="flex";
+        //打开设置自动填充当前全局配置
+        document.getElementById("pRate").value = A_RATE;
+        document.getElementById("eRate").value = B_RATE;
+        document.getElementById("rateBao").value = rateBao;
+        document.getElementById("rateShun").value = rateShun;
+        document.getElementById("rateJin").value = rateJin;
+        document.getElementById("rateTian").value = rateTian;
+        document.getElementById("setMyChip").value = gameState.chipA;
+        document.getElementById("setEnemyChip").value = gameState.chipB;
+        document.getElementById("setPool").value = gameState.pool;
+    }else{alert("密码错误");}
+}
+function closeSettingModal(){document.getElementById("settingModal").style.display="none";}
+function saveSetting(){
+    //读取后台所有输入框数据
+    A_RATE = Number(document.getElementById("pRate").value);
+    B_RATE = Number(document.getElementById("eRate").value);
+    rateBao = Number(document.getElementById("rateBao").value);
+    rateShun = Number(document.getElementById("rateShun").value);
+    rateJin = Number(document.getElementById("rateJin").value);
+    rateTian = Number(document.getElementById("rateTian").value);
+    gameState.chipA = Number(document.getElementById("setMyChip").value);
+    gameState.chipB = Number(document.getElementById("setEnemyChip").value);
+    gameState.pool = Number(document.getElementById("setPool").value);
+
+    //【核心】把全部配置发送给服务器，服务器广播给双方，两边同步更新
+    ws.send(JSON.stringify({
+        type:"updateAllSetting",
+        A_RATE, B_RATE, rateBao, rateShun, rateJin, rateTian,
+        chipA:gameState.chipA, chipB:gameState.chipB, pool:gameState.pool
+    }));
+    alert("已保存，设置同步给全部玩家");
+    closeSettingModal();
+    render();
+}
+
+function playerReady(){
+    ws.send(JSON.stringify({type:"ready", role:myRole}));
+    document.getElementById("readyBtn").disabled = true;
+    document.getElementById("readyBtn").innerText = "已准备";
+}
+function bet(){
+    const val = Number(document.getElementById("betInput").value);
+    if(!val || val <=0){alert("输入有效下注金额");return;}
+    const myChipNow = myRole==="A"?gameState.chipA:gameState.chipB;
+    if(val > myChipNow){alert("余额不足");return;}
+    ws.send(JSON.stringify({type:"bet", num:val, role:myRole}));
+}
+function fold(){ws.send(JSON.stringify({type:"fold", role:myRole}));}
+function openCard(){ws.send(JSON.stringify({type:"openCard", role:myRole}));}
+function resetGame(){ws.send(JSON.stringify({type:"resetGame"}));}
+
+ws.onmessage = function(evt){
+    const msg = JSON.parse(evt.data);
+    switch(msg.type){
+        case "loginSuccess":
+            myRole = msg.role;
+            document.getElementById("loginModal").style.display="none";
+            document.getElementById("readyBtn").disabled = false;
+            render();
+            break;
+        case "gameState":
+            gameState = msg.state;
+            render();
+            break;
+        case "roundEnd":
+            openNextRoundModal();
+            break;
+        case "bothConfirmNext":
+            document.getElementById("nextRoundModal").style.display="none";
+            start3sCountDown();
+            break;
+        case "result":
+            document.getElementById("resultText").innerText = msg.text;
+            document.getElementById("resultModal").style.display="flex";
+            break;
+        // 接收服务器下发的全局后台配置，两边页面同时更新
+        case "syncAllSetting":
+            A_RATE = msg.A_RATE;
+            B_RATE = msg.B_RATE;
+            rateBao = msg.rateBao;
+            rateShun = msg.rateShun;
+            rateJin = msg.rateJin;
+            rateTian = msg.rateTian;
+            gameState.chipA = msg.chipA;
+            gameState.chipB = msg.chipB;
+            gameState.pool = msg.pool;
+            render();
+            break;
+    }
+}
+ws.onopen = ()=>console.log("连接成功");
+render();
+</script>
+</body>
+</html>
