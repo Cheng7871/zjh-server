@@ -161,13 +161,9 @@ wss.on('connection', (ws) => {
                 readyStatus.A = false;
                 readyStatus.B = false;
 
-                // 发牌
                 dealCards();
 
-                // 先广播完整状态
                 broadcast({ type: "gameState", state: gameState });
-
-                // 【关键】再单独发牌局数据，保证前端一定收到牌
                 broadcast({
                     type: "newRoundCards",
                     cardsA: gameState.cardsA,
@@ -209,6 +205,7 @@ wss.on('connection', (ws) => {
             }
 
             case "openCard": {
+                gameState.roundEnd = true;
                 let winner = "玩家A";
 
                 if (winner === "玩家A") {
@@ -230,6 +227,7 @@ wss.on('connection', (ws) => {
             }
 
             case "fold": {
+                gameState.roundEnd = true;
                 let winner = msg.role === "A" ? "玩家B" : "玩家A";
 
                 if (winner === "玩家A") {
