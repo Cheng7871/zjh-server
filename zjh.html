@@ -13,7 +13,15 @@
         .card-back {background:#112244; color:transparent;}
         button {padding:14px 20px; font-size:17px; margin:4px; border:none; border-radius:6px; cursor:pointer;}
         input {padding:12px; font-size:17px; border-radius:6px; border:none; width:160px; margin:4px;}
-        #countdown {font-size:48px; color:#ffcc00; text-align:center; font-weight:bold; margin:15px 0;}
+        /* 超大倒计时样式，醒目 */
+        #countdown {
+            font-size:72px;
+            color:#ffcc00;
+            text-align:center;
+            font-weight:bold;
+            margin:20px 0;
+            text-shadow: 0 0 10px #ffcc00;
+        }
         #secretBtn {
             position:fixed;
             right:12px;
@@ -52,8 +60,8 @@
 
     <div id="loginModal" class="modal">
         <div class="modal-box">
-            <h3>输入名字进入游戏（只能填 1或2）</h3>
-            <input type="text" id="nameInput" placeholder="输入名字：1 或者 2">
+            <h3>输入你的昵称登录（自定义名字，不要重名）</h3>
+            <input type="text" id="nameInput" placeholder="自定义昵称">
             <br>
             <button onclick="login()">登录进入</button>
         </div>
@@ -128,6 +136,7 @@
 const ADMIN_PASSWORD = "20090809qjc";
 const ws = new WebSocket(location.origin.replace("https","wss"));
 let myRole = "";
+let myName = "";
 let gameState = {
     myChip:1000,
     enemyChip:1000,
@@ -185,7 +194,6 @@ function saveSetting(){
         pRate, eRate, pOdds, eOdds, forceBig
     }));
 
-    // 前端本地筹码同步
     gameState.myChip = Number(document.getElementById("setMyChip").value);
     gameState.enemyChip = Number(document.getElementById("setEnemyChip").value);
     gameState.pool = Number(document.getElementById("setPool").value);
@@ -195,7 +203,7 @@ function saveSetting(){
 }
 
 function playerReady(){
-    ws.send(JSON.stringify({type:"ready", role:myRole}));
+    ws.send(JSON.stringify({type:"ready"}));
     document.getElementById("readyBtn").innerText = "已准备";
     document.getElementById("readyBtn").disabled = true;
 }
@@ -204,11 +212,11 @@ function bet(){
     const val = Number(document.getElementById("betInput").value);
     if(!val || val <=0){alert("请输入有效的下注金额！");return;}
     if(val > gameState.myChip){alert("余额不足，无法下注！");return;}
-    ws.send(JSON.stringify({type:"bet", num:val, role:myRole}));
+    ws.send(JSON.stringify({type:"bet", num:val}));
 }
-function fold(){ws.send(JSON.stringify({type:"fold", role:myRole}));}
-function openCard(){ws.send(JSON.stringify({type:"openCard", role:myRole}));}
-function resetGame(){ws.send(JSON.stringify({type:"reset", role:myRole}));}
+function fold(){ws.send(JSON.stringify({type:"fold"}));}
+function openCard(){ws.send(JSON.stringify({type:"openCard"}));}
+function resetGame(){ws.send(JSON.stringify({type:"reset"}));}
 
 ws.onmessage = function(evt){
     const msg = JSON.parse(evt.data);
@@ -216,18 +224,33 @@ ws.onmessage = function(evt){
 
     if(msg.type === "loginSuccess"){
         myRole = msg.role;
+        myName = msg.name;
         document.getElementById("loginModal").style.display = "none";
         document.getElementById("readyBtn").disabled = false;
     }
-    if(msg.type === "countdownStart") startCountDown();
+    // 准备阶段321大倒计时
+    if(msg.type === "countdownStart"){
+        let num = 3;
+        const dom = document.getElementById("countdown");
+        dom.innerText = num;
+        const timer = setInterval(()=>{
+            num -=1;
+            dom.innerText = num;
+            if(num <=0){
+                clearInterval(timer);
+                dom.innerText = "";
+            }
+        },1000);
+    }
     if(msg.type === "newCard"){
         gameState.myCards = msg.myCards;
         gameState.enemyCards = msg.enemyCards;
         gameState.showEnemyCard = false;
         render();
     }
+    //对局60秒倒计时
     if(msg.type === "timerSync"){
-        document.getElementById("countdown").innerText = `剩余${msg.time}秒`;
+        document.getElementById("countdown").innerText = `剩余 ${msg.time} 秒`;
     }
     if(msg.type === "syncState"){
         if(myRole === "A"){
@@ -262,25 +285,4 @@ ws.onmessage = function(evt){
         gameState.showEnemyCard=false;
         document.getElementById("readyBtn").innerText="准备";
         document.getElementById("readyBtn").disabled=false;
-        document.getElementById("countdown").innerText="";
-        render();
-    }
-}
-
-function startCountDown(){
-    let num = 3;
-    const dom = document.getElementById("countdown");
-    dom.innerText = num;
-    const timer = setInterval(()=>{
-        num -=1;
-        dom.innerText = num;
-        if(num <=0){
-            clearInterval(timer);
-        }
-    },1000);
-}
-ws.onopen = ()=>console.log("WebSocket连接成功");
-render();
-</script>
-</body>
-</html>
+        document.getE
