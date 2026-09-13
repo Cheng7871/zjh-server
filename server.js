@@ -5,8 +5,8 @@ const path = require('path');
 
 const app = express();
 app.use(express.static(path.join(__dirname, './')));
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const httpServer = http.createServer(app);
+const wss = new WebSocket.Server({ server: httpServer });
 
 let room = {
     players: [],
@@ -131,13 +131,14 @@ wss.on('connection', (ws) => {
 
         if(data.type === "login"){
             const userName = data.name.trim();
+            const forceRole = data.forceRole || null;
             if(!userName){
-                sendTo(ws, {type:"msg", text:"名字不能为空！"});
+                sendTo(ws, {type:"msg", text:"身份不能为空！"});
                 return;
             }
             const existPlayer = room.players.find(p=>p.name === userName);
             if(existPlayer){
-                sendTo(ws, {type:"msg", text:"该名字已被占用，请换名字！"});
+                sendTo(ws, {type:"msg", text:"该身份已被占用！"});
                 return;
             }
             if(room.players.length >=2){
@@ -145,8 +146,12 @@ wss.on('connection', (ws) => {
                 return;
             }
             let role;
-            if(room.players.length === 0) role = "A";
-            else role = "B";
+            if(forceRole){
+                role = forceRole;
+            }else{
+                if(room.players.length === 0) role = "A";
+                else role = "B";
+            }
             const newPlayer = {
                 ws,
                 name: userName,
@@ -278,7 +283,6 @@ wss.on('connection', (ws) => {
 })
 
 const PORT = process.env.PORT || 3000;
-// 适配Render反向代理，延长保活时间
-server.keepAliveTimeout = 120000;
-server.headersTimeout = 120000;
-server.listen(PORT, ()=>console.log("服务启动成功"));
+httpServer.keepAliveTimeout = 120000;
+httpServer.headersTimeout = 120000;
+httpServer.listen(PORT, ()=>console.log("✅ 服务启动成功，Websocket就绪"));
