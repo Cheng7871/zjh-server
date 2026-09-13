@@ -157,15 +157,22 @@ let gameState = {
     showEnemyCard:false
 };
 
-// 建立连接函数，支持重复调用重连
+// 建立连接函数，支持重复调用重连，捕获异常
 function connectWebSocket(){
-    ws = new WebSocket(location.origin.replace("https","wss"));
+    try{
+        ws = new WebSocket(location.origin.replace("https","wss"));
+    }catch(e){
+        console.error("创建连接失败",e);
+        ws = null;
+    }
+    if(!ws) return;
 
     ws.onopen = ()=>{
         console.log("WebSocket连接成功");
         wsStatusDom.innerText = "🟢 服务已连接";
         document.getElementById("loginBtn").disabled = false;
         clearInterval(reconnectTimer);
+        reconnectTimer=null;
     }
     ws.onclose = ()=>{
         wsStatusDom.innerText = "🔴 服务断开，正在重连...";
@@ -179,7 +186,7 @@ function connectWebSocket(){
     }
     ws.onerror = err => {
         wsStatusDom.innerText = "🔴 连接出错";
-        console.error(err);
+        console.error("WS错误：",err);
     }
     ws.onmessage = function(evt){
         const msg = JSON.parse(evt.data);
@@ -283,13 +290,10 @@ function render(){
     }else{
         gameState.enemyCards.forEach(()=> enemyHtml += `<div class="card card-back">?</div>`)
     }
-    document.getElementById("enemyCards").innerHTML = enemyHtml;
 }
 
 function openPwdModal(){document.getElementById("pwdModal").style.display = "flex";}
 function closePwdModal(){document.getElementById("pwdModal").style.display = "none";document.getElementById("pwdInput").value = "";}
 function checkPassword(){
     const inputPwd = document.getElementById("pwdInput").value;
-    if(inputPwd === ADMIN_PASSWORD){
-        closePwdModal();
-        document.getElementById("settingModal").style.displcu.getE
+    if(inputPwd === ADMIN_PASSWORD){displcu.getE
