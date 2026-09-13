@@ -13,13 +13,20 @@ let room = {
     playerB: { ws: null, name: "2", chip: 1000, ready: false },
     pool: 200,
     cards: {A:[], B:[]},
-    gameOver: false
+    gameOver: false,
+    timer: null,
+    remainTime: 60,
+    config: {
+        pRate: 100,
+        eRate: 100,
+        pOdds: 1,
+        eOdds: 1,
+        forceBig: 0
+    }
 };
 
-// 牌权重映射
 const rankWeight = {"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"J":11,"Q":12,"K":13,"A":14};
 
-// 解析手牌，返回牌型权重，越大越强
 function parseCards(cardList){
     const ranks = [];
     const suits = [];
@@ -43,7 +50,6 @@ function parseCards(cardList){
     return {type:1, val:ranks[0], name:"单张"};
 }
 
-// 对比 A、B牌，返回赢家 A / B
 function compareCard(cardA, cardB){
     const a = parseCards(cardA);
     const b = parseCards(cardB);
@@ -69,6 +75,49 @@ function createCards() {
     for(let i=0;i<3;i++) cardA.push(allCards[Math.floor(Math.random()*allCards.length)]);
     for(let i=0;i<3;i++) cardB.push(allCards[Math.floor(Math.random()*allCards.length)]);
     return {A:cardA, B:cardB};
+}
+
+function clearGameTimer(){
+    if(room.timer){
+        clearInterval(room.timer);
+        room.timer = null;
+    }
+}
+function startGameTimer(){
+    clearGameTimer();
+    room.remainTime = 60;
+    room.timer = setInterval(()=>{
+        room.remainTime -=1;
+        broadcast({type:"timerSync", time:room.remainTime});
+        if(room.remainTime <=0){
+            clearGameTimer();
+            if(room.gameOver) return;
+            room.gameOver = true;
+            const winner = compareCard(room.cards.A, room.cards.B);
+            let winAmount;
+            if(winner === "A"){
+                winAmount = room.pool * room.config.pOdds;
+                room.playerA.chip += winAmount;
+            }else{
+                winAmount = room.pool * room.config.eOdds;
+                room.playerB.chip += winAmount;
+            }
+            broadcast({type:"showAllCard"});
+            setTimeout(()=>{
+                broadcast({
+                    type:"result",
+                    msg:`60秒超时自动开牌！玩家${winner}获胜，赢得${winAmount}筹码`
+                });
+                room.pool = 200;
+                broadcast({
+                    type:"syncState",
+                    chipA: room.playerA.chip,
+                    chipB: room.playerB.chip,
+                    pool: room.pool
+                })
+            },1200)
+        }
+    },1000)
 }
 
 wss.on('connection', (ws) => {
@@ -110,6 +159,7 @@ wss.on('connection', (ws) => {
                     room.gameOver = false;
                     sendTo(room.playerA.ws, {type:"newCard", myCards:room.cards.A, enemyCards:room.cards.B});
                     sendTo(room.playerB.ws, {type:"newCard", myCards:room.cards.B, enemyCards:room.cards.A});
+                    startGameTimer();
                 },3000);
             }
         }
@@ -126,7 +176,7 @@ wss.on('connection', (ws) => {
                 room.pool += betNum;
             }else{
                 if(betNum > room.playerB.chip){
-                    sendTo(ws, {type:"msg", text:"余额不足，下注失败"});
+                    sendTo(ws, {type:"msg", text:"余额不足，无法下注"});
                     return;
                 }
                 room.playerB.chip -= betNum;
@@ -142,18 +192,20 @@ wss.on('connection', (ws) => {
 
         if(data.type === "fold"){
             if(room.gameOver) return;
+            clearGameTimer();
             room.gameOver = true;
-            let winner = data.role === "A" ? "B":"A";
+            const winner = data.role === "A" ? "B":"A";
+            let winAmount;
             if(winner === "A"){
-                room.playerA.chip += room.pool;
+                winAmount = room.pool * room.config.pOdds;
+                room.playerA.chip += winAmount;
             }else{
-                room.playerB.chip += room.pool;
+                winAmount = room.pool * room.config.eOdds;
+                room.playerB.chip += winAmount;
             }
             broadcast({
                 type:"result",
-                winner:winner,
-                pool:room.pool,
-                msg:`玩家${data.role}弃牌！玩家${winner}赢走底池${room.pool}`
+                msg:`玩家${data.role}弃牌！玩家${winner}赢走${winAmount}筹码`
             });
             room.pool = 200;
             broadcast({
@@ -166,22 +218,22 @@ wss.on('connection', (ws) => {
 
         if(data.type === "openCard"){
             if(room.gameOver) return;
+            clearGameTimer();
             room.gameOver = true;
             const winner = compareCard(room.cards.A, room.cards.B);
+            let winAmount;
             if(winner === "A"){
-                room.playerA.chip += room.pool;
+                winAmount = room.pool * room.config.pOdds;
+                room.playerA.chip += winAmount;
             }else{
-                room.playerB.chip += room.pool;
+                winAmount = room.pool * room.config.eOdds;
+                room.playerB.chip += winAmount;
             }
-            broadcast({
-                type:"showAllCard"
-            });
+            broadcast({type:"showAllCard"});
             setTimeout(()=>{
                 broadcast({
                     type:"result",
-                    winner:winner,
-                    pool:room.pool,
-                    msg:`开牌结算！玩家${winner}赢走底池${room.pool}`
+                    msg:`开牌结算！玩家${winner}获胜，赢得${winAmount}筹码`
                 });
                 room.pool = 200;
                 broadcast({
@@ -193,7 +245,18 @@ wss.on('connection', (ws) => {
             },1200)
         }
 
+        // 前端提交后台配置
+        if(data.type === "saveConfig"){
+            room.config.pRate = Number(data.pRate);
+            room.config.eRate = Number(data.eRate);
+            room.config.pOdds = Number(data.pOdds);
+            room.config.eOdds = Number(data.eOdds);
+            room.config.forceBig = Number(data.forceBig);
+            sendTo(ws, {type:"msg", text:"✅ 配置保存成功，全局生效！"});
+        }
+
         if(data.type === "reset"){
+            clearGameTimer();
             room.playerA.ready = false;
             room.playerB.ready = false;
             room.playerA.chip = 1000;
@@ -211,6 +274,7 @@ wss.on('connection', (ws) => {
     })
 
     ws.on('close', ()=>{
+        clearGameTimer();
         if(room.playerA.ws === ws){
             room.playerA.ws = null;
             room.playerA.ready = false;
