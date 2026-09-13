@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>联机炸金花【Q7】</title>
+    <title>联机炸金花 【Q7】</title>
     <style>
         *{box-sizing:border-box;font-family:system-ui}
         body{background:#142036;color:#fff;padding:16px;margin:0}
@@ -16,10 +16,29 @@
         .btn-area{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
         button{padding:12px 16px;border:none;border-radius:8px;font-size:16px}
         #log{margin-top:16px;color:#aaa;font-size:14px;height:120px;overflow:auto}
+        .set-box{border:1px solid #668;padding:10px;border-radius:8px;margin-bottom:10px}
+        input{padding:6px;width:70px;margin:0 4px}
     </style>
 </head>
 <body>
-    <div class="title">联机炸金花</div>
+    <div class="title">联机炸金花【可控爆率版】</div>
+
+    <!-- ===== 爆率控制面板 ===== -->
+    <div class="set-box">
+        <div>⚙️本局控制（初始默认0）</div>
+        <label>本局强制大牌：
+            <select id="forceBig">
+                <option value="0">0-关闭</option>
+                <option value="1">1-本局必大牌</option>
+            </select>
+        </label>
+        <br><br>
+        <div>玩家爆率(0~100)：</div>
+        你：<input id="rateMe" value="0">%
+        对手：<input id="rateEnemy" value="0">%
+        <button onclick="sendRate()">发送本局配置给对手</button>
+    </div>
+
     <div class="info">
         你的筹码：<span id="myChip">3000w</span>｜对手筹码：<span id="enemyChip">3000w</span>｜底池：<span id="pot">0w</span>
     </div>
@@ -44,9 +63,6 @@
     <div id="log"></div>
 
 <script>
-// ==========【爆率设置区，在这里改！】==========
-const BIG_CARD_RATE = 40; // 大牌概率0~100。40=40%拿到大牌，70超高爆，10低爆
-// ==========================================
 const wsUrl = `wss://zjh-server.onrender.com`;
 const ws = new WebSocket(wsUrl);
 
@@ -55,15 +71,21 @@ let game = {
     myCards:[],enemyCards:[],
     gameOver:false
 }
+//配置
+let gameConfig = {
+    forceBig: 0,    //0关闭，1本局强制大牌
+    rateMe:0,       //自己大牌概率
+    rateEnemy:0     //对手大牌概率
+}
 
-// 全部扑克牌
+//全部扑克牌
 const allCards = [
     "A♠","K♠","Q♠","J♠","10♠","9♠","8♠","7♠","6♠","5♠","4♠","3♠","2♠",
     "A♥","K♥","Q♥","J♥","10♥","9♥","8♥","7♥","6♥","5♥","4♥","3♥","2♥",
     "A♣","K♣","Q♣","J♣","10♣","9♣","8♣","7♣","6♣","5♣","4♣","3♣","2♣",
     "A♦","K♦","Q♦","J♦","10♦","9♦","8♦","7♦","6♦","5♦","4♦","3♦","2♦",
 ];
-//预设大牌：豹子、顺金、金花
+//预设大牌池：豹子、顺金、金花
 const bigCardPool = [
     ["A♠","K♠","Q♠"],
     ["K♠","Q♠","J♠"],
@@ -98,22 +120,45 @@ function renderUI(){
 
 //发牌逻辑
 function dealCards(){
-    let rand = Math.random() * 100;
-    if(rand < BIG_CARD_RATE){
+    gameConfig.forceBig = Number(document.getElementById("forceBig").value);
+    gameConfig.rateMe = Number(document.getElementById("rateMe").value);
+    gameConfig.rateEnemy = Number(document.getElementById("rateEnemy").value);
+
+    if(gameConfig.forceBig ===1){
         let pickBig = bigCardPool[Math.floor(Math.random()*bigCardPool.length)];
         game.myCards = pickBig;
         let temp = [...allCards].sort(()=>Math.random()-0.5).filter(c=>!game.myCards.includes(c));
         game.enemyCards = temp.slice(0,3);
-        log(`🔥触发高爆！你拿到大牌！`);
+        log(`🔥本局强制开启大牌！`);
     }else{
+        let randMe = Math.random()*100;
+        let randEnemy = Math.random()*100;
         let temp = [...allCards].sort(()=>Math.random()-0.5);
-        game.myCards = temp.slice(0,3);
-        game.enemyCards = temp.slice(3,6);
-        log("普通牌局");
+        if(randMe < gameConfig.rateMe){
+            game.myCards = bigCardPool[Math.floor(Math.random()*bigCardPool.length)];
+            temp = temp.filter(c=>!game.myCards.includes(c));
+        }else{
+            game.myCards = temp.slice(0,3);
+            temp = temp.filter(c=>!game.myCards.includes(c));
+        }
+        if(randEnemy < gameConfig.rateEnemy){
+            game.enemyCards = bigCardPool[Math.floor(Math.random()*bigCardPool.length)];
+        }else{
+            game.enemyCards = temp.slice(0,3);
+        }
+        log(`✅发牌完成 | 你的爆率${gameConfig.rateMe}%，对手爆率${gameConfig.rateEnemy}%`);
     }
     game.gameOver = false;
-    log("✅ 发牌完成！");
     renderUI();
+}
+
+//发送配置给对手
+function sendRate(){
+    gameConfig.forceBig = Number(document.getElementById("forceBig").value);
+    gameConfig.rateMe = Number(document.getElementById("rateMe").value);
+    gameConfig.rateEnemy = Number(document.getElementById("rateEnemy").value);
+    ws.send(JSON.stringify({cmd:"setRate",data:gameConfig}));
+    log("⚙️已把本局爆率设置同步给对手！");
 }
 
 function sendCmd(type){
@@ -123,6 +168,14 @@ function sendCmd(type){
 ws.onmessage = function(e){
     let msg = JSON.parse(e.data);
     switch(msg.cmd){
+        case "setRate":
+            gameConfig = msg.data;
+            //同步界面
+            document.getElementById("forceBig").value = gameConfig.forceBig;
+            document.getElementById("rateMe").value = gameConfig.rateMe;
+            document.getElementById("rateEnemy").value = gameConfig.rateEnemy;
+            log("📥收到对手发来的爆率配置");
+            break;
         case "deal":
             dealCards();
             log("对手发起：发新牌");
