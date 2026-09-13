@@ -12,6 +12,10 @@
         .card {width:80px; height:110px; background:#223366; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:bold;}
         .card-back {background:#112244; color:transparent;}
         button {padding:14px 20px; font-size:17px; margin:4px; border:none; border-radius:6px; cursor:pointer;}
+        button:disabled{
+            background:#666;
+            cursor:not-allowed;
+        }
         input {padding:12px; font-size:17px; border-radius:6px; border:none; width:160px; margin:4px;}
         #countdown {
             font-size:72px;
@@ -71,7 +75,7 @@
             <h3>输入你的昵称登录（自定义名字，不要重名）</h3>
             <input type="text" id="nameInput" placeholder="自定义昵称">
             <br>
-            <button onclick="login()">登录进入</button>
+            <button id="loginBtn" onclick="login()" disabled>登录进入</button>
         </div>
     </div>
 
@@ -108,10 +112,8 @@
         <button onclick="resetGame()">重置游戏</button>
     </div>
 
-    <!-- 右上角神秘按钮7 -->
     <button id="secretBtn" onclick="openPwdModal()">7</button>
 
-    <!-- 密码弹窗 -->
     <div id="pwdModal" class="modal">
         <div class="modal-box">
             <h3>请输入后台密码</h3>
@@ -122,7 +124,6 @@
         </div>
     </div>
 
-    <!-- 后台配置面板（全部赔率概率放这里） -->
     <div id="settingModal" class="modal">
         <div class="modal-box">
             <h3>⚙️ 后台全局配置</h3>
@@ -141,8 +142,10 @@
     </div>
 
 <script>
-const ADMIN_PASSWORD = "20090809";
-const ws = new WebSocket(location.origin.replace("https","wss"));
+const ADMIN_PASSWORD = "20090809qjc";
+let ws;
+let reconnectTimer = null;
+const wsStatusDom = document.getElementById("wsStatus");
 let myRole = "";
 let myName = "";
 let gameState = {
@@ -154,26 +157,111 @@ let gameState = {
     showEnemyCard:false
 };
 
-// 右下角连接状态显示
-const wsStatusDom = document.getElementById("wsStatus");
-ws.onopen = ()=>{
-    console.log("WebSocket连接成功");
-    wsStatusDom.innerText = "🟢 服务已连接";
+// 建立连接函数，支持重复调用重连
+function connectWebSocket(){
+    ws = new WebSocket(location.origin.replace("https","wss"));
+
+    ws.onopen = ()=>{
+        console.log("WebSocket连接成功");
+        wsStatusDom.innerText = "🟢 服务已连接";
+        document.getElementById("loginBtn").disabled = false;
+        clearInterval(reconnectTimer);
+    }
+    ws.onclose = ()=>{
+        wsStatusDom.innerText = "🔴 服务断开，正在重连...";
+        document.getElementById("loginBtn").disabled = true;
+        // 断开后，3秒自动尝试重连
+        if(!reconnectTimer){
+            reconnectTimer = setInterval(()=>{
+                connectWebSocket();
+            },3000)
+        }
+    }
+    ws.onerror = err => {
+        wsStatusDom.innerText = "🔴 连接出错";
+        console.error(err);
+    }
+    ws.onmessage = function(evt){
+        const msg = JSON.parse(evt.data);
+        if(msg.type === "msg") alert(msg.text);
+
+        if(msg.type === "loginSuccess"){
+            myRole = msg.role;
+            myName = msg.name;
+            document.getElementById("loginModal").style.display = "none";
+            document.getElementById("readyBtn").disabled = false;
+        }
+        if(msg.type === "countdownStart"){
+            let num = 3;
+            const dom = document.getElementById("countdown");
+            dom.innerText = num;
+            const timer = setInterval(()=>{
+                num -=1;
+                dom.innerText = num;
+                if(num <=0){
+                    clearInterval(timer);
+                    dom.innerText = "";
+                }
+            },1000);
+        }
+        if(msg.type === "newCard"){
+            gameState.myCards = msg.myCards;
+            gameState.enemyCards = msg.enemyCards;
+            gameState.showEnemyCard = false;
+            render();
+        }
+        if(msg.type === "timerSync"){
+            document.getElementById("countdown").innerText = `剩余 ${msg.time} 秒`;
+        }
+        if(msg.type === "syncState"){
+            if(myRole === "A"){
+                gameState.myChip = msg.chipA;
+                gameState.enemyChip = msg.chipB;
+            }else{
+                gameState.myChip = msg.chipB;
+                gameState.enemyChip = msg.chipA;
+            }
+            gameState.pool = msg.pool;
+            render();
+        }
+        if(msg.type === "showAllCard"){
+            gameState.showEnemyCard = true;
+            render();
+        }
+        if(msg.type === "result"){
+            document.getElementById("resultText").innerText = msg.msg;
+            document.getElementById("resultModal").style.display = "flex";
+        }
+        if(msg.type === "reset"){
+            if(myRole === "A"){
+                gameState.myChip = msg.chipA;
+                gameState.enemyChip = msg.chipB;
+            }else{
+                gameState.myChip = msg.chipB;
+                gameState.enemyChip = msg.chipA;
+            }
+            gameState.pool = msg.pool;
+            gameState.myCards=[];
+            gameState.enemyCards=[];
+            gameState.showEnemyCard=false;
+            document.getElementById("readyBtn").innerText="准备";
+            document.getElementById("readyBtn").disabled=false;
+            document.getElementById("countdown").innerText="";
+            render();
+        }
+    }
 }
-ws.onclose = ()=>{
-    wsStatusDom.innerText = "🔴 服务断开";
-}
+// 页面加载立刻启动websocket连接
+connectWebSocket();
 
 function login(){
     const name = document.getElementById("nameInput").value.trim();
-    // 校验1：空白名字拦截
     if(!name){
         alert("名字不能为空！");
         return;
     }
-    // 校验2：判断websocket有没有连上
     if(ws.readyState !== WebSocket.OPEN){
-        alert("⚠️ 还没连上服务器！等右下角变成🟢再登录");
+        alert("⚠️ 等待服务器连接成功！");
         return;
     }
     ws.send(JSON.stringify({type:"login", name:name}));
@@ -198,102 +286,10 @@ function render(){
     document.getElementById("enemyCards").innerHTML = enemyHtml;
 }
 
-// 密码弹窗
 function openPwdModal(){document.getElementById("pwdModal").style.display = "flex";}
 function closePwdModal(){document.getElementById("pwdModal").style.display = "none";document.getElementById("pwdInput").value = "";}
 function checkPassword(){
     const inputPwd = document.getElementById("pwdInput").value;
     if(inputPwd === ADMIN_PASSWORD){
         closePwdModal();
-        document.getElementById("settingModal").style.display = "flex";
-    }else alert("密码错误");
-}
-function closeSettingModal(){document.getElementById("settingModal").style.display = "none";}
-// 保存配置发送给后端
-function saveSetting(){
-    const pRate = Number(document.getElementById("pRate").value);
-    const eRate = Number(document.getElementById("eRate").value);
-    const pOdds = Number(document.getElementById("pOdds").value);
-    const eOdds = Number(document.getElementById("eOdds").value);
-    const forceBig = Number(document.getElementById("forceBig").value);
-
-    ws.send(JSON.stringify({
-        type:"saveConfig",
-        pRate, eRate, pOdds, eOdds, forceBig
-    }));
-
-    gameState.myChip = Number(document.getElementById("setMyChip").value);
-    gameState.enemyChip = Number(document.getElementById("setEnemyChip").value);
-    gameState.pool = Number(document.getElementById("setPool").value);
-    alert("配置已提交保存");
-    closeSettingModal();
-    render();
-}
-
-function playerReady(){
-    ws.send(JSON.stringify({type:"ready"}));
-    document.getElementById("readyBtn").innerText = "已准备";
-    document.getElementById("readyBtn").disabled = true;
-}
-
-function bet(){
-    const val = Number(document.getElementById("betInput").value);
-    if(!val || val <=0){alert("请输入有效的下注金额！");return;}
-    if(val > gameState.myChip){alert("余额不足，无法下注！");return;}
-    ws.send(JSON.stringify({type:"bet", num:val}));
-}
-function fold(){ws.send(JSON.stringify({type:"fold"}));}
-function openCard(){ws.send(JSON.stringify({type:"openCard"}));}
-function resetGame(){ws.send(JSON.stringify({type:"reset"}));}
-
-ws.onmessage = function(evt){
-    const msg = JSON.parse(evt.data);
-    if(msg.type === "msg") alert(msg.text);
-
-    if(msg.type === "loginSuccess"){
-        myRole = msg.role;
-        myName = msg.name;
-        document.getElementById("loginModal").style.display = "none";
-        document.getElementById("readyBtn").disabled = false;
-    }
-    // 准备阶段321大倒计时
-    if(msg.type === "countdownStart"){
-        let num = 3;
-        const dom = document.getElementById("countdown");
-        dom.innerText = num;
-        const timer = setInterval(()=>{
-            num -=1;
-            dom.innerText = num;
-            if(num <=0){
-                clearInterval(timer);
-                dom.innerText = "";
-            }
-        },1000);
-    }
-    if(msg.type === "newCard"){
-        gameState.myCards = msg.myCards;
-        gameState.enemyCards = msg.enemyCards;
-        gameState.showEnemyCard = false;
-        render();
-    }
-    //对局60秒倒计时
-    if(msg.type === "timerSync"){
-        document.getElementById("countdown").innerText = `剩余 ${msg.time} 秒`;
-    }
-    if(msg.type === "syncState"){
-        if(myRole === "A"){
-            gameState.myChip = msg.chipA;
-            gameState.enemyChip = msg.chipB;
-        }else{
-            gameState.myChip = msg.chipB;
-            gameState.enemyChip = msg.chipA;
-        }
-        gameState.pool = msg.pool;
-        render();
-    }
-    if(msg.type === "showAllCard"){
-        gameState.showEnemyCard = true;
-        render();
-    }
-    if(msg.type === "result"){
-        docu.getE
+        document.getElementById("settingModal").style.displcu.getE
