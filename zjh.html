@@ -10,14 +10,15 @@
         .box {border:1px solid #778; border-radius:10px; padding:12px; margin-bottom:16px;}
         .cardWrap {display:flex; gap:8px; margin:10px 0;}
         .card {width:80px; height:110px; background:#223366; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:bold;}
+        .card-back {background:#112244; color:transparent;} /*牌背面样式*/
         button {padding:14px 20px; font-size:17px; margin:4px; border:none; border-radius:6px; cursor:pointer;}
         input {padding:12px; font-size:17px; border-radius:6px; border:none; width:160px; margin:4px;}
         #countdown {font-size:48px; color:#ffcc00; text-align:center; font-weight:bold; margin:15px 0;}
-        /*左下角7号设置按钮*/
+        /*右上角7号按钮*/
         #secretBtn {
             position:fixed;
-            left:12px;
-            bottom:12px;
+            right:12px;
+            top:12px;
             width:42px;
             height:42px;
             border-radius:50%;
@@ -46,7 +47,7 @@
     <h2>联机炸金花</h2>
 
     <div class="box">
-        <div>你的筹码：<span id="myChip">5000w</span> | 对手筹码：<span id="enemyChip">5000w</span> | 底池：<span id="pool">1000w</span></div>
+        <div>你的筹码：<span id="myChip">1000w</span> | 对手筹码：<span id="enemyChip">1000w</span> | 底池：<span id="pool">200w</span></div>
     </div>
 
     <div id="countdown"></div>
@@ -71,7 +72,7 @@
         <button onclick="resetGame()">重置游戏</button>
     </div>
 
-    <!-- 左下角秘密按钮【数字7】 -->
+    <!-- 右上角秘密按钮【数字7】 -->
     <button id="secretBtn" onclick="openPwdModal()">7</button>
 
     <!-- 密码弹窗 -->
@@ -85,13 +86,16 @@
         </div>
     </div>
 
-    <!-- 爆率设置面板，密码验证通过后才显示 -->
+    <!-- 爆率+筹码设置面板，密码验证通过后才显示 -->
     <div id="settingModal" class="modal">
         <div class="modal-box">
-            <h3>爆率设置</h3>
+            <h3>后台设置</h3>
             <div>己方爆率(0~100)：<input type="number" id="pRate" min="0" max="100"></div>
             <div>对手爆率(0~100)：<input type="number" id="eRate" min="0" max="100"></div>
             <div>本局强制大牌(0关/1开)：<input type="number" id="forceBig" min="0" max="1"></div>
+            <div>你的筹码：<input type="number" id="setMyChip"></div>
+            <div>对手筹码：<input type="number" id="setEnemyChip"></div>
+            <div>底池：<input type="number" id="setPool"></div>
             <br>
             <button onclick="saveSetting()">保存</button>
             <button onclick="closeSettingModal()">关闭</button>
@@ -103,41 +107,22 @@
 let PLAYER_RATE = 100;
 let ENEMY_RATE = 100;
 let FORCE_BIG_CARD = 1;
-const ADMIN_PASSWORD = "200989"; // 这里改密码
+const ADMIN_PASSWORD = "20090809qjc"; // 修改密码在这里
 
 // WebSocket连接
 const ws = new WebSocket(location.origin.replace("https","wss"));
 let gameState = {
     myChip:1000,
-    enemyChip:3000,
+    enemyChip:1000,
     pool:2000,
     myCards:[],
-    enemyCards:[]
+    enemyCards:[],
+    showEnemyCard:false // 控制对手牌是否翻开
 };
 let readyState = {
     selfReady: false,
     enemyReady: false
 };
-
-// 牌库
-const ranks = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
-const suits = ["♠","♥","♦","♣"];
-
-// 生成一局牌组
-function createCards(){
-    let all = [];
-    for(let r of ranks) for(let s of suits) all.push(r+s);
-    let pCards = [];
-    let eCards = [];
-    if(FORCE_BIG_CARD === 1){
-        for(let i=0;i<3;i++) pCards.push(all[Math.floor(Math.random()*all.length)]);
-        for(let i=0;i<3;i++) eCards.push(all[Math.floor(Math.random()*all.length)]);
-    }else{
-        for(let i=0;i<3;i++) pCards.push(all[Math.floor(Math.random()*all.length)]);
-        for(let i=0;i<3;i++) eCards.push(all[Math.floor(Math.random()*all.length)]);
-    }
-    return {pCards,eCards};
-}
 
 // 渲染手牌
 function render(){
@@ -150,7 +135,12 @@ function render(){
     document.getElementById("myCards").innerHTML = myHtml;
 
     let enemyHtml = "";
-    gameState.enemyCards.forEach(c=> enemyHtml += `<div class="card">${c}</div>`)
+    if(gameState.showEnemyCard){
+        gameState.enemyCards.forEach(c=> enemyHtml += `<div class="card">${c}</div>`)
+    }else{
+        //没开牌，全部显示背面
+        gameState.enemyCards.forEach(()=> enemyHtml += `<div class="card card-back">?</div>`)
+    }
     document.getElementById("enemyCards").innerHTML = enemyHtml;
 }
 
@@ -167,10 +157,13 @@ function checkPassword(){
     const inputPwd = document.getElementById("pwdInput").value;
     if(inputPwd === ADMIN_PASSWORD){
         closePwdModal();
-        // 把当前参数填充进输入框
+        //填充当前数据到设置框
         document.getElementById("pRate").value = PLAYER_RATE;
         document.getElementById("eRate").value = ENEMY_RATE;
         document.getElementById("forceBig").value = FORCE_BIG_CARD;
+        document.getElementById("setMyChip").value = gameState.myChip;
+        document.getElementById("setEnemyChip").value = gameState.enemyChip;
+        document.getElementById("setPool").value = gameState.pool;
         document.getElementById("settingModal").style.display = "flex";
     }else{
         alert("密码错误");
@@ -179,13 +172,17 @@ function checkPassword(){
 function closeSettingModal(){
     document.getElementById("settingModal").style.display = "none";
 }
-//保存爆率设置
+//保存爆率筹码设置
 function saveSetting(){
     PLAYER_RATE = Number(document.getElementById("pRate").value);
     ENEMY_RATE = Number(document.getElementById("eRate").value);
     FORCE_BIG_CARD = Number(document.getElementById("forceBig").value);
+    gameState.myChip = Number(document.getElementById("setMyChip").value);
+    gameState.enemyChip = Number(document.getElementById("setEnemyChip").value);
+    gameState.pool = Number(document.getElementById("setPool").value);
     alert("保存成功");
     closeSettingModal();
+    render();
 }
 
 // 玩家点准备
@@ -196,10 +193,17 @@ function playerReady(){
     document.getElementById("readyBtn").disabled = true;
 }
 
-// 下注
+// 下注【增加余额校验，防止负数】
 function bet(){
     const val = Number(document.getElementById("betInput").value);
-    if(!val || val <=0) return;
+    if(!val || val <=0){
+        alert("请输入有效的下注金额！");
+        return;
+    }
+    if(val > gameState.myChip){
+        alert("余额不足，无法下注！");
+        return;
+    }
     ws.send(JSON.stringify({type:"bet", num:val}));
 }
 
@@ -207,11 +211,10 @@ function fold(){
     ws.send(JSON.stringify({type:"fold"}));
 }
 function openCard(){
-    ws.send(JSON.stringify({type:"open"}));
+    ws.send(JSON.stringify({type:"openCard"}));
 }
 function resetGame(){
     ws.send(JSON.stringify({type:"reset"}));
-    //重置准备状态
     readyState = {selfReady:false,enemyReady:false};
     document.getElementById("readyBtn").innerText = "准备";
     document.getElementById("readyBtn").disabled = false;
@@ -221,18 +224,24 @@ function resetGame(){
 // 接收服务器消息
 ws.onmessage = function(evt){
     const msg = JSON.parse(evt.data);
-    // 收到对手准备信号
-    if(msg.type === "ready"){
-        readyState.enemyReady = true;
-        //双方都准备，开启倒计时
-        if(readyState.selfReady && readyState.enemyReady){
-            startCountDown();
-        }
+    // 收到后端提示消息
+    if(msg.type === "msg"){
+        alert(msg.text);
     }
-    //倒计时结束发牌
+    // 双方准备完成，收到倒计时指令
+    if(msg.type === "countdownStart"){
+        startCountDown();
+    }
+    // 收到本局牌
     if(msg.type === "newCard"){
         gameState.myCards = msg.data.pCards;
         gameState.enemyCards = msg.data.eCards;
+        gameState.showEnemyCard = false; // 新一局，对手牌盖着
+        render();
+    }
+    //开牌，翻开对手手牌
+    if(msg.type === "showAllCard"){
+        gameState.showEnemyCard = true;
         render();
     }
     if(msg.type === "bet"){
@@ -241,12 +250,15 @@ ws.onmessage = function(evt){
         render();
     }
     if(msg.type === "reset"){
-        gameState = {myChip:1000,enemyChip:3000,pool:2000,myCards:[],enemyCards:[]};
+        gameState = {myChip:msg.myChip,enemyChip:msg.enemyChip,pool:msg.pool,myCards:[],enemyCards:[],showEnemyCard:false};
         readyState = {selfReady:false,enemyReady:false};
         document.getElementById("readyBtn").innerText = "准备";
         document.getElementById("readyBtn").disabled = false;
         document.getElementById("countdown").innerText = "";
         render();
+    }
+    if(msg.type === "gameResult"){
+        alert(msg.msg);
     }
 }
 
@@ -261,8 +273,6 @@ function startCountDown(){
         if(num <=0){
             clearInterval(timer);
             dom.innerText = "开始发牌！";
-            const cardsData = createCards();
-            ws.send(JSON.stringify({type:"newCard", data:cardsData}));
         }
     },1000);
 }
