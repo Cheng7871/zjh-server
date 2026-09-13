@@ -135,13 +135,11 @@ wss.on('connection', (ws) => {
                 sendTo(ws, {type:"msg", text:"名字不能为空！"});
                 return;
             }
-            // 判断重名
             const existPlayer = room.players.find(p=>p.name === userName);
             if(existPlayer){
                 sendTo(ws, {type:"msg", text:"该名字已被占用，请换名字！"});
                 return;
             }
-            // 最多2人，随机分配A/B
             if(room.players.length >=2){
                 sendTo(ws, {type:"msg", text:"房间已满！"});
                 return;
@@ -165,11 +163,9 @@ wss.on('connection', (ws) => {
             const player = room.players.find(p=>p.ws === ws);
             if(!player) return;
             player.ready = true;
-            // 两个人全部准备完成
             const allReady = room.players.every(p=>p.ready === true);
             if(allReady && room.players.length ===2){
                 broadcast({type:"countdownStart"});
-                //3秒倒计时发牌
                 setTimeout(()=>{
                     const cardResult = createCards();
                     room.cards.A = cardResult.A;
