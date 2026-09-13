@@ -278,4 +278,7 @@ wss.on('connection', (ws) => {
 })
 
 const PORT = process.env.PORT || 3000;
+// 适配Render反向代理，延长保活时间
+server.keepAliveTimeout = 120000;
+server.headersTimeout = 120000;
 server.listen(PORT, ()=>console.log("服务启动成功"));
