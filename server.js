@@ -7,12 +7,11 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// 托管静态html
 app.get('/', (req,res)=>{
     res.sendFile(path.join(__dirname,"zjh.html"));
 })
 
-//全局游戏配置（后台修改会覆盖这里）
+//全局配置
 let globalConfig = {
     A_RATE:100,
     B_RATE:100,
@@ -33,10 +32,13 @@ let gameState = {
     roundEnd: false
 }
 
+// 新增：记录玩家准备状态
+let readyStatus = {
+    A:false,
+    B:false
+}
 let players = {};
-let playerCount = 0;
 
-//广播函数，发给所有连接
 function broadcast(data){
     const str = JSON.stringify(data);
     wss.clients.forEach(client=>{
@@ -52,14 +54,26 @@ wss.on('connection', (ws)=>{
         const msg = JSON.parse(raw);
         switch(msg.type){
             case "login":{
-                playerCount++;
                 const role = msg.name === "1" ? "A" : "B";
                 players[role] = ws;
                 ws.send(JSON.stringify({type:"loginSuccess", role}));
+                broadcast({type:"gameState", state:gameState})
+                break;
+            }
+            case "ready":{
+                // 标记当前玩家已准备
+                readyStatus[msg.role] = true;
+                console.log("准备状态：",readyStatus)
+                // ✅关键：两个人都准备好，直接开局倒计时
+                if(readyStatus.A && readyStatus.B){
+                    //重置准备标记
+                    readyStatus.A = false;
+                    readyStatus.B = false;
+                    broadcast({type:"bothReady"})
+                }
                 break;
             }
             case "updateAllSetting":{
-                //接收后台前端发来的全部设置，存入全局，广播同步给两边玩家
                 globalConfig.A_RATE = msg.A_RATE;
                 globalConfig.B_RATE = msg.B_RATE;
                 globalConfig.rateBao = msg.rateBao;
@@ -87,11 +101,9 @@ wss.on('connection', (ws)=>{
                 break;
             }
             case "newRound":{
-                //重置下一局，筹码保留
                 gameState.nextConfirmA = false;
                 gameState.nextConfirmB = false;
                 gameState.roundEnd = false;
-                //发牌逻辑在这里，你原来的发牌代码粘贴到这里
                 broadcast({type:"gameState", state:gameState})
                 break;
             }
@@ -117,6 +129,7 @@ wss.on('connection', (ws)=>{
                     nextConfirmB: false,
                     roundEnd: false
                 }
+                readyStatus = {A:false,B:false};
                 broadcast({type:"gameState", state:gameState})
                 break;
             }
