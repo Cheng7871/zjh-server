@@ -52,7 +52,7 @@
 
     <div id="loginModal" class="modal">
         <div class="modal-box">
-            <h3>输入名字进入游戏（只能填 1 或 2）</h3>
+            <h3>输入名字进入游戏（只能填 1或2）</h3>
             <input type="text" id="nameInput" placeholder="输入名字：1 或者 2">
             <br>
             <button onclick="login()">登录进入</button>
@@ -92,11 +92,13 @@
         <button onclick="resetGame()">重置游戏</button>
     </div>
 
+    <!-- 右上角神秘按钮7 -->
     <button id="secretBtn" onclick="openPwdModal()">7</button>
 
+    <!-- 密码弹窗 -->
     <div id="pwdModal" class="modal">
         <div class="modal-box">
-            <h3>请输入密码</h3>
+            <h3>请输入后台密码</h3>
             <input type="password" id="pwdInput" placeholder="密码">
             <br>
             <button onclick="checkPassword()">确认</button>
@@ -104,26 +106,26 @@
         </div>
     </div>
 
+    <!-- 后台配置面板（全部赔率概率放这里） -->
     <div id="settingModal" class="modal">
         <div class="modal-box">
-            <h3>后台设置</h3>
+            <h3>⚙️ 后台全局配置</h3>
             <div>己方爆率(0~100)：<input type="number" id="pRate" min="0" max="100"></div>
-            <div>对手爆率(0~100)：<input type="number" id="forceBig" min="0" max="1"></div>
+            <div>对手爆率(0~100)：<input type="number" id="eRate" min="0" max="100"></div>
+            <div>己方赔率：<input type="number" id="pOdds" step="0.1" min="0.1"></div>
+            <div>对手赔率：<input type="number" id="eOdds" step="0.1" min="0.1"></div>
+            <div>本局强制大牌(0关/1开)：<input type="number" id="forceBig" min="0" max="1"></div>
             <div>你的筹码：<input type="number" id="setMyChip"></div>
             <div>对手筹码：<input type="number" id="setEnemyChip"></div>
             <div>底池：<input type="number" id="setPool"></div>
             <br>
-            <button onclick="saveSetting()">保存</button>
+            <button onclick="saveSetting()">保存配置到服务端</button>
             <button onclick="closeSettingModal()">关闭</button>
         </div>
     </div>
 
 <script>
-let PLAYER_RATE = 100;
-let ENEMY_RATE = 100;
-let FORCE_BIG_CARD = 1;
-const ADMIN_PASSWORD = "123456";
-
+const ADMIN_PASSWORD = "20090809qjc";
 const ws = new WebSocket(location.origin.replace("https","wss"));
 let myRole = "";
 let gameState = {
@@ -159,30 +161,37 @@ function render(){
     document.getElementById("enemyCards").innerHTML = enemyHtml;
 }
 
+// 密码弹窗
 function openPwdModal(){document.getElementById("pwdModal").style.display = "flex";}
 function closePwdModal(){document.getElementById("pwdModal").style.display = "none";document.getElementById("pwdInput").value = "";}
 function checkPassword(){
     const inputPwd = document.getElementById("pwdInput").value;
     if(inputPwd === ADMIN_PASSWORD){
         closePwdModal();
-        document.getElementById("pRate").value = PLAYER_RATE;
-        document.getElementById("eRate").value = ENEMY_RATE;
-        document.getElementById("forceBig").value = FORCE_BIG_CARD;
-        document.getElementById("setMyChip").value = gameState.myChip;
-        document.getElementById("setEnemyChip").value = gameState.enemyChip;
-        document.getElementById("setPool").value = gameState.pool;
         document.getElementById("settingModal").style.display = "flex";
     }else alert("密码错误");
 }
 function closeSettingModal(){document.getElementById("settingModal").style.display = "none";}
+// 保存配置发送给后端
 function saveSetting(){
-    PLAYER_RATE = Number(document.getElementById("pRate").value);
-    ENEMY_RATE = Number(document.getElementById("eRate").value);
-    FORCE_BIG_CARD = Number(document.getElementById("forceBig").value);
+    const pRate = Number(document.getElementById("pRate").value);
+    const eRate = Number(document.getElementById("eRate").value);
+    const pOdds = Number(document.getElementById("pOdds").value);
+    const eOdds = Number(document.getElementById("eOdds").value);
+    const forceBig = Number(document.getElementById("forceBig").value);
+
+    ws.send(JSON.stringify({
+        type:"saveConfig",
+        pRate, eRate, pOdds, eOdds, forceBig
+    }));
+
+    // 前端本地筹码同步
     gameState.myChip = Number(document.getElementById("setMyChip").value);
     gameState.enemyChip = Number(document.getElementById("setEnemyChip").value);
     gameState.pool = Number(document.getElementById("setPool").value);
-    alert("保存成功");closeSettingModal();render();
+    alert("配置已提交保存");
+    closeSettingModal();
+    render();
 }
 
 function playerReady(){
@@ -216,6 +225,9 @@ ws.onmessage = function(evt){
         gameState.enemyCards = msg.enemyCards;
         gameState.showEnemyCard = false;
         render();
+    }
+    if(msg.type === "timerSync"){
+        document.getElementById("countdown").innerText = `剩余${msg.time}秒`;
     }
     if(msg.type === "syncState"){
         if(myRole === "A"){
@@ -264,7 +276,6 @@ function startCountDown(){
         dom.innerText = num;
         if(num <=0){
             clearInterval(timer);
-            dom.innerText = "开始发牌！";
         }
     },1000);
 }
