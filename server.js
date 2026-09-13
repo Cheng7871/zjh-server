@@ -14,11 +14,10 @@ console.log("WebSocket 服务启动成功！");
 wss.on('connection', (ws) => {
   console.log("有玩家连上");
   ws.on('message', (rawData) => {
-    // 强制转成字符串文本，解决Blob二进制乱码问题
     let msg = rawData.toString();
-    // 广播文本给所有人
+    // 广播：跳过发送消息的本人，发给其他所有人
     wss.clients.forEach(client => {
-      if(client.readyState === WebSocket.OPEN){
+      if(client !== ws && client.readyState === WebSocket.OPEN){
         client.send(msg);
       }
     })
