@@ -13,7 +13,6 @@
         .card-back {background:#112244; color:transparent;}
         button {padding:14px 20px; font-size:17px; margin:4px; border:none; border-radius:6px; cursor:pointer;}
         input {padding:12px; font-size:17px; border-radius:6px; border:none; width:160px; margin:4px;}
-        /* 超大倒计时样式，醒目 */
         #countdown {
             font-size:72px;
             color:#ffcc00;
@@ -53,9 +52,18 @@
         #resultModal{
             text-align:center;
         }
+        .ws-status{
+            position:fixed;
+            bottom:10px;
+            right:10px;
+            padding:6px 10px;
+            background:#222;
+            border-radius:4px;
+        }
     </style>
 </head>
 <body>
+    <div class="ws-status" id="wsStatus">🔴 未连接服务</div>
     <h2>联机炸金花</h2>
 
     <div id="loginModal" class="modal">
@@ -133,7 +141,7 @@
     </div>
 
 <script>
-const ADMIN_PASSWORD = "20090809qjc";
+const ADMIN_PASSWORD = "20090809";
 const ws = new WebSocket(location.origin.replace("https","wss"));
 let myRole = "";
 let myName = "";
@@ -146,8 +154,28 @@ let gameState = {
     showEnemyCard:false
 };
 
+// 右下角连接状态显示
+const wsStatusDom = document.getElementById("wsStatus");
+ws.onopen = ()=>{
+    console.log("WebSocket连接成功");
+    wsStatusDom.innerText = "🟢 服务已连接";
+}
+ws.onclose = ()=>{
+    wsStatusDom.innerText = "🔴 服务断开";
+}
+
 function login(){
     const name = document.getElementById("nameInput").value.trim();
+    // 校验1：空白名字拦截
+    if(!name){
+        alert("名字不能为空！");
+        return;
+    }
+    // 校验2：判断websocket有没有连上
+    if(ws.readyState !== WebSocket.OPEN){
+        alert("⚠️ 还没连上服务器！等右下角变成🟢再登录");
+        return;
+    }
     ws.send(JSON.stringify({type:"login", name:name}));
 }
 function closeResultModal(){document.getElementById("resultModal").style.display="none";}
@@ -268,21 +296,4 @@ ws.onmessage = function(evt){
         render();
     }
     if(msg.type === "result"){
-        document.getElementById("resultText").innerText = msg.msg;
-        document.getElementById("resultModal").style.display = "flex";
-    }
-    if(msg.type === "reset"){
-        if(myRole === "A"){
-            gameState.myChip = msg.chipA;
-            gameState.enemyChip = msg.chipB;
-        }else{
-            gameState.myChip = msg.chipB;
-            gameState.enemyChip = msg.chipA;
-        }
-        gameState.pool = msg.pool;
-        gameState.myCards=[];
-        gameState.enemyCards=[];
-        gameState.showEnemyCard=false;
-        document.getElementById("readyBtn").innerText="准备";
-        document.getElementById("readyBtn").disabled=false;
-        document.getE
+        docu.getE
