@@ -127,6 +127,23 @@ wss.on('connection', (ws)=>{
                 }
                 break;
             }
+            case "bet":{
+                const num = msg.num;
+                const role = msg.role;
+                if(role === "A"){
+                    if(gameState.chipA >= num){
+                        gameState.chipA -= num;
+                        gameState.pool += num;
+                    }
+                }else{
+                    if(gameState.chipB >= num){
+                        gameState.chipB -= num;
+                        gameState.pool += num;
+                    }
+                }
+                broadcast({type:"gameState", state:gameState})
+                break;
+            }
             case "updateAllSetting":{
                 globalConfig.A_RATE = msg.A_RATE;
                 globalConfig.B_RATE = msg.B_RATE;
@@ -149,29 +166,32 @@ wss.on('connection', (ws)=>{
             case "requestNextRound":{
                 if(msg.role === "A") gameState.nextConfirmA = true;
                 if(msg.role === "B") gameState.nextConfirmB = true;
+                console.log("确认状态：",gameState.nextConfirmA,gameState.nextConfirmB)
                 if(gameState.nextConfirmA && gameState.nextConfirmB){
+                    //双方确认，重置标记，触发倒计时
+                    gameState.nextConfirmA = false;
+                    gameState.nextConfirmB = false;
                     broadcast({type:"bothConfirmNext"})
                 }
+                broadcast({type:"gameState", state:gameState})
                 break;
             }
             case "newRound":{
                 gameState.nextConfirmA = false;
                 gameState.nextConfirmB = false;
                 gameState.roundEnd = false;
+                gameState.showEnemyCard = false;
                 // ✅ 在这里执行发牌！
                 dealCards();
                 broadcast({type:"gameState", state:gameState})
                 break;
             }
             case "fold":{
-                broadcast({type:"roundEnd"})
-                broadcast({type:"result", text: msg.role+"弃牌，本局结束"})
+                broadcast({type:"roundEndDelay"})
                 break;
             }
             case "openCard":{
-                gameState.showEnemyCard = true;
-                broadcast({type:"roundEnd"})
-                broadcast({type:"result", text:"双方开牌，结算"})
+                broadcast({type:"roundEndDelay"})
                 break;
             }
             case "resetGame":{
