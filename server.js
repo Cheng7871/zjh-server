@@ -84,16 +84,16 @@ wss.on('connection', (ws)=>{
                 gameState.roundEnd = false;
                 readyStatus.A = false;
                 readyStatus.B = false;
-                //发牌逻辑省略，你原有发牌代码放这里
+                //发牌逻辑，你原有发牌代码放这里
                 broadcast({type:"gameState", state:gameState});
                 break;
             case "requestNextRound":
                 if(msg.role === "A") gameState.nextConfirmA = true;
                 if(msg.role === "B") gameState.nextConfirmB = true;
+                broadcast({type:"gameState", state:gameState}); // 同步状态，页面立刻刷新按钮
                 if(gameState.nextConfirmA && gameState.nextConfirmB){
                     broadcast({type:"bothConfirmNext"});
                 }
-                broadcast({type:"gameState", state:gameState});
                 break;
             case "openCard":
                 //开牌结算，扣除筹码、底池分配
