@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>联机测试页</title>
+<style>
+body{padding:16px;background:#111;color:#fff}
+#msg{height:300px;overflow:auto;border:1px solid #555;padding:8px;margin-bottom:10px}
+input{width:75%;padding:8px}
+button{padding:8px}
+</style>
+</head>
+<body>
+<div id="msg"></div>
+<input id="txt" placeholder="输入消息">
+<button onclick="send()">发送</button>
+<script>
+const ws = new WebSocket("wss://zjh-server.onrender.com");
+const msgBox = document.getElementById('msg');
+function log(t){msgBox.innerHTML += `<div>${t}</div>`;msgBox.scrollTop = msgBox.scrollHeight;}
+ws.onopen = ()=>log("✅成功连接服务器");
+ws.onmessage = e=>log("收到："+e.data);
+ws.onclose = ()=>log("❌连接断开");
+function send(){
+    const v = document.getElementById('txt').value;
+    ws.send(v);
+    log("你："+v);
+    document.getElementById('txt').value = "";
+}
+</script>
+</body>
+</html>
