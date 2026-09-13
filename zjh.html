@@ -53,7 +53,7 @@
     <div id="loginModal" class="modal">
         <div class="modal-box">
             <h3>输入名字进入游戏（只能填 1 或 2）</h3>
-            <input type="text" id="nameInput" placeholder="输入 1或2">
+            <input type="text" id="nameInput" placeholder="输入名字：1 或者 2">
             <br>
             <button onclick="login()">登录进入</button>
         </div>
@@ -67,7 +67,7 @@
     </div>
 
     <div class="box">
-        <div>你的筹码：<span id="myChip">1000</span>w | 对手筹码：<span id="enemyChip">1000</span>w | 底池：<span id="pool">200</span>w</div>
+        <div id="chipBar">玩家A筹码：<span id="myChip">1000</span>w | 玩家B筹码：<span id="enemyChip">1000</span>w | 底池：<span id="pool">200</span>w</div>
     </div>
 
     <div id="countdown"></div>
@@ -113,8 +113,8 @@
             <div>己方爆率(0~100)：<input type="number" id="pRate" min="0" max="100"></div>
             <div>对手爆率(0~100)：<input type="number" id="eRate" min="0" max="100"></div>
             <div>强制大牌(0关/1开)：<input type="number" id="forceBig" min="0" max="1"></div>
-            <div>你的筹码：<input type="number" id="setMyChip"></div>
-            <div>对手筹码：<input type="number" id="setEnemyChip"></div>
+            <div>玩家A筹码：<input type="number" id="setMyChip"></div>
+            <div>玩家B筹码：<input type="number" id="setEnemyChip"></div>
             <div>底池：<input type="number" id="setPool"></div>
             <br>
             <button onclick="saveSetting()">保存</button>
@@ -126,13 +126,13 @@
 let PLAYER_RATE = 100;
 let ENEMY_RATE = 100;
 let FORCE_BIG_CARD = 1;
-const ADMIN_PASSWORD = "20090809qjc";
+const ADMIN_PASSWORD = "20090809";
 
 const ws = new WebSocket(location.origin.replace("https","wss"));
 let myRole = "";
 let gameState = {
-    myChip:1000,
-    enemyChip:1000,
+    chipA:1000,
+    chipB:1000,
     pool:200,
     myCards:[],
     enemyCards:[],
@@ -146,9 +146,14 @@ function login(){
 function closeResultModal(){document.getElementById("resultModal").style.display="none";}
 
 function render(){
-    document.getElementById("myChip").innerText = gameState.myChip;
-    document.getElementById("enemyChip").innerText = gameState.enemyChip;
-    document.getElementById("pool").innerText = gameState.pool;
+    // 根据角色调换展示文字
+    let chipHtml;
+    if(myRole === "A"){
+        chipHtml = `玩家A筹码：<span id="myChip">${gameState.chipA}</span>w | 玩家B筹码：<span id="enemyChip">${gameState.chipB}</span>w | 底池：<span id="pool">${gameState.pool}</span>w`;
+    }else if(myRole === "B"){
+        chipHtml = `玩家B筹码：<span id="myChip">${gameState.chipB}</span>w | 玩家A筹码：<span id="enemyChip">${gameState.chipA}</span>w | 底池：<span id="pool">${gameState.pool}</span>w`;
+    }
+    document.getElementById("chipBar").innerHTML = chipHtml;
 
     let myHtml = "";
     gameState.myCards.forEach(c=> myHtml += `<div class="card">${c}</div>`)
@@ -174,8 +179,8 @@ function checkPassword(){
         document.getElementById("pRate").value = PLAYER_RATE;
         document.getElementById("eRate").value = ENEMY_RATE;
         document.getElementById("forceBig").value = FORCE_BIG_CARD;
-        document.getElementById("setMyChip").value = gameState.myChip;
-        document.getElementById("setEnemyChip").value = gameState.enemyChip;
+        document.getElementById("setMyChip").value = gameState.chipA;
+        document.getElementById("setEnemyChip").value = gameState.chipB;
         document.getElementById("setPool").value = gameState.pool;
         document.getElementById("settingModal").style.display = "flex";
     }else alert("密码错误");
@@ -185,8 +190,8 @@ function saveSetting(){
     PLAYER_RATE = Number(document.getElementById("pRate").value);
     ENEMY_RATE = Number(document.getElementById("eRate").value);
     FORCE_BIG_CARD = Number(document.getElementById("forceBig").value);
-    gameState.myChip = Number(document.getElementById("setMyChip").value);
-    gameState.enemyChip = Number(document.getElementById("setEnemyChip").value);
+    gameState.chipA = Number(document.getElementById("setMyChip").value);
+    gameState.chipB = Number(document.getElementById("setEnemyChip").value);
     gameState.pool = Number(document.getElementById("setPool").value);
     alert("保存成功");
     closeSettingModal();
@@ -218,15 +223,25 @@ ws.onmessage = function(evt){
         myRole = msg.role;
         document.getElementById("loginModal").style.display = "none";
         document.getElementById("readyBtn").disabled = false;
+        render();
     }
     if(msg.type === "countdownStart") startCountDown();
     if(msg.type === "newCard"){
-        gameState.myCards = msg.myCards;
-        gameState.enemyCards = msg.enemyCards;
+        if(myRole === "A"){
+            gameState.myCards = msg.myCards;
+            gameState.enemyCards = msg.enemyCards;
+        }else{
+            gameState.myCards = msg.myCards;
+            gameState.enemyCards = msg.enemyCards;
+        }
         gameState.showEnemyCard = false;
         render();
     }
     if(msg.type === "syncState"){
+        gameState.chipA = msg.chipA;
+        gameState.chipB = msg.chipB;
+        gameState.pool = msg.pool;
+        // 给当前玩家赋值自己筹码
         if(myRole === "A"){
             gameState.myChip = msg.chipA;
             gameState.enemyChip = msg.chipB;
@@ -234,7 +249,6 @@ ws.onmessage = function(evt){
             gameState.myChip = msg.chipB;
             gameState.enemyChip = msg.chipA;
         }
-        gameState.pool = msg.pool;
         render();
     }
     if(msg.type === "showAllCard"){
@@ -246,6 +260,9 @@ ws.onmessage = function(evt){
         document.getElementById("resultModal").style.display = "flex";
     }
     if(msg.type === "reset"){
+        gameState.chipA = msg.chipA;
+        gameState.chipB = msg.chipB;
+        gameState.pool = msg.pool;
         if(myRole === "A"){
             gameState.myChip = msg.chipA;
             gameState.enemyChip = msg.chipB;
@@ -253,32 +270,5 @@ ws.onmessage = function(evt){
             gameState.myChip = msg.chipB;
             gameState.enemyChip = msg.chipA;
         }
-        gameState.pool = msg.pool;
         gameState.myCards=[];
-        gameState.enemyCards=[];
-        gameState.showEnemyCard=false;
-        document.getElementById("readyBtn").innerText="准备";
-        document.getElementById("readyBtn").disabled=false;
-        document.getElementById("countdown").innerText="";
-        render();
-    }
-}
-
-function startCountDown(){
-    let num = 3;
-    const dom = document.getElementById("countdown");
-    dom.innerText = num;
-    const timer = setInterval(()=>{
-        num -=1;
-        dom.innerText = num;
-        if(num <=0){
-            clearInterval(timer);
-            dom.innerText = "开始发牌！";
-        }
-    },1000);
-}
-ws.onopen = ()=>console.log("WebSocket连接成功");
-render();
-</script>
-</body>
-</ht
+        gameState.enemyCard
