@@ -5,27 +5,21 @@ const path = require('path');
 
 const app = express();
 app.use(express.static(path.join(__dirname, './')));
-const httpServer = http.createServer(app);
-const wss = new WebSocket.Server({ server: httpServer });
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 let room = {
-    players: [],
+    playerA: { ws: null, name: "1", chip: 1000, ready: false },
+    playerB: { ws: null, name: "2", chip: 1000, ready: false },
     pool: 200,
     cards: {A:[], B:[]},
-    gameOver: false,
-    timer: null,
-    remainTime: 60,
-    config: {
-        pRate: 100,
-        eRate: 100,
-        pOdds: 1,
-        eOdds: 1,
-        forceBig: 0
-    }
+    gameOver: false
 };
 
+// 牌权重映射
 const rankWeight = {"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"J":11,"Q":12,"K":13,"A":14};
 
+// 解析手牌，返回牌型权重，越大越强
 function parseCards(cardList){
     const ranks = [];
     const suits = [];
@@ -49,6 +43,7 @@ function parseCards(cardList){
     return {type:1, val:ranks[0], name:"单张"};
 }
 
+// 对比 A、B牌，返回赢家 A / B
 function compareCard(cardA, cardB){
     const a = parseCards(cardA);
     const b = parseCards(cardB);
@@ -61,9 +56,8 @@ function sendTo(ws, data){
     ws.send(JSON.stringify(data));
 }
 function broadcast(data){
-    room.players.forEach(p=>{
-        if(p.ws) p.ws.send(JSON.stringify(data));
-    })
+    if(room.playerA.ws) room.playerA.ws.send(JSON.stringify(data));
+    if(room.playerB.ws) room.playerB.ws.send(JSON.stringify(data));
 }
 
 function createCards() {
@@ -77,212 +71,158 @@ function createCards() {
     return {A:cardA, B:cardB};
 }
 
-function clearGameTimer(){
-    if(room.timer){
-        clearInterval(room.timer);
-        room.timer = null;
-    }
-}
-function startGameTimer(){
-    clearGameTimer();
-    room.remainTime = 60;
-    room.timer = setInterval(()=>{
-        room.remainTime -=1;
-        broadcast({type:"timerSync", time:room.remainTime});
-        if(room.remainTime <=0){
-            clearGameTimer();
-            if(room.gameOver) return;
-            room.gameOver = true;
-            const winner = compareCard(room.cards.A, room.cards.B);
-            let winAmount;
-            if(winner === "A"){
-                winAmount = room.pool * room.config.pOdds;
-                room.players.find(x=>x.role==="A").chip += winAmount;
-            }else{
-                winAmount = room.pool * room.config.eOdds;
-                room.players.find(x=>x.role==="B").chip += winAmount;
-            }
-            broadcast({type:"showAllCard"});
-            setTimeout(()=>{
-                broadcast({
-                    type:"result",
-                    msg:`60秒超时自动开牌！玩家${winner}获胜，赢得${winAmount}筹码`
-                });
-                room.pool = 200;
-                broadcastSync();
-            },1200)
-        }
-    },1000)
-}
-function broadcastSync(){
-    const pA = room.players.find(x=>x.role==="A");
-    const pB = room.players.find(x=>x.role==="B");
-    broadcast({
-        type:"syncState",
-        chipA: pA?.chip||0,
-        chipB: pB?.chip||0,
-        pool: room.pool
-    })
-}
-
 wss.on('connection', (ws) => {
     ws.on('message', (rawMsg) => {
         const data = JSON.parse(rawMsg.toString());
 
         if(data.type === "login"){
             const userName = data.name.trim();
-            const forceRole = data.forceRole || null;
-            if(!userName){
-                sendTo(ws, {type:"msg", text:"身份不能为空！"});
-                return;
-            }
-            const existPlayer = room.players.find(p=>p.name === userName);
-            if(existPlayer){
-                sendTo(ws, {type:"msg", text:"该身份已被占用！"});
-                return;
-            }
-            if(room.players.length >=2){
-                sendTo(ws, {type:"msg", text:"房间已满！"});
-                return;
-            }
-            let role;
-            if(forceRole){
-                role = forceRole;
+            if(userName === "1"){
+                if(room.playerA.ws !== null){
+                    sendTo(ws, {type:"msg", text:"玩家A席位已被占用！换名字2登录"});
+                    return;
+                }
+                room.playerA.ws = ws;
+                sendTo(ws, {type:"loginSuccess", role:"A"});
+                broadcast({type:"playerJoin", name:"1", role:"A"});
+            }else if(userName === "2"){
+                if(room.playerB.ws !== null){
+                    sendTo(ws, {type:"msg", text:"玩家B席位已被占用！换名字1登录"});
+                    return;
+                }
+                room.playerB.ws = ws;
+                sendTo(ws, {type:"loginSuccess", role:"B"});
+                broadcast({type:"playerJoin", name:"2", role:"B"});
             }else{
-                if(room.players.length === 0) role = "A";
-                else role = "B";
+                sendTo(ws, {type:"msg", text:"名字只能输入 1 或者 2！"});
             }
-            const newPlayer = {
-                ws,
-                name: userName,
-                role,
-                chip:1000,
-                ready:false
-            }
-            room.players.push(newPlayer);
-            sendTo(ws, {type:"loginSuccess", role, name:userName});
-            broadcast({type:"playerJoin", name:userName, role});
         }
 
         if(data.type === "ready"){
-            const player = room.players.find(p=>p.ws === ws);
-            if(!player) return;
-            player.ready = true;
-            const allReady = room.players.every(p=>p.ready === true);
-            if(allReady && room.players.length ===2){
+            if(data.role === "A") room.playerA.ready = true;
+            if(data.role === "B") room.playerB.ready = true;
+            if(room.playerA.ready && room.playerB.ready){
                 broadcast({type:"countdownStart"});
                 setTimeout(()=>{
                     const cardResult = createCards();
                     room.cards.A = cardResult.A;
                     room.cards.B = cardResult.B;
                     room.gameOver = false;
-                    const pA = room.players.find(x=>x.role==="A");
-                    const pB = room.players.find(x=>x.role==="B");
-                    sendTo(pA.ws, {type:"newCard", myCards:room.cards.A, enemyCards:room.cards.B});
-                    sendTo(pB.ws, {type:"newCard", myCards:room.cards.B, enemyCards:room.cards.A});
-                    startGameTimer();
+                    sendTo(room.playerA.ws, {type:"newCard", myCards:room.cards.A, enemyCards:room.cards.B});
+                    sendTo(room.playerB.ws, {type:"newCard", myCards:room.cards.B, enemyCards:room.cards.A});
                 },3000);
             }
         }
 
         if(data.type === "bet"){
             if(room.gameOver) return;
-            const player = room.players.find(p=>p.ws === ws);
-            if(!player) return;
             const betNum = data.num;
-            if(betNum > player.chip){
-                sendTo(ws, {type:"msg", text:"余额不足，下注失败"});
-                return;
+            if(data.role === "A"){
+                if(betNum > room.playerA.chip){
+                    sendTo(ws, {type:"msg", text:"余额不足，下注失败"});
+                    return;
+                }
+                room.playerA.chip -= betNum;
+                room.pool += betNum;
+            }else{
+                if(betNum > room.playerB.chip){
+                    sendTo(ws, {type:"msg", text:"余额不足，下注失败"});
+                    return;
+                }
+                room.playerB.chip -= betNum;
+                room.pool += betNum;
             }
-            player.chip -= betNum;
-            room.pool += betNum;
-            broadcastSync();
+            broadcast({
+                type:"syncState",
+                chipA: room.playerA.chip,
+                chipB: room.playerB.chip,
+                pool: room.pool
+            })
         }
 
         if(data.type === "fold"){
             if(room.gameOver) return;
-            clearGameTimer();
             room.gameOver = true;
-            const player = room.players.find(p=>p.ws === ws);
-            const winner = player.role === "A" ? "B":"A";
-            let winAmount;
+            let winner = data.role === "A" ? "B":"A";
             if(winner === "A"){
-                winAmount = room.pool * room.config.pOdds;
-                room.players.find(x=>x.role==="A").chip += winAmount;
+                room.playerA.chip += room.pool;
             }else{
-                winAmount = room.pool * room.config.eOdds;
-                room.players.find(x=>x.role==="B").chip += winAmount;
+                room.playerB.chip += room.pool;
             }
             broadcast({
                 type:"result",
-                msg:`玩家${player.name}弃牌！玩家${winner}赢走${winAmount}筹码`
+                winner:winner,
+                pool:room.pool,
+                msg:`玩家${data.role}弃牌！玩家${winner}赢走底池${room.pool}`
             });
             room.pool = 200;
-            broadcastSync();
+            broadcast({
+                type:"syncState",
+                chipA: room.playerA.chip,
+                chipB: room.playerB.chip,
+                pool: room.pool
+            })
         }
 
         if(data.type === "openCard"){
             if(room.gameOver) return;
-            clearGameTimer();
             room.gameOver = true;
             const winner = compareCard(room.cards.A, room.cards.B);
-            let winAmount;
             if(winner === "A"){
-                winAmount = room.pool * room.config.pOdds;
-                room.players.find(x=>x.role==="A").chip += winAmount;
+                room.playerA.chip += room.pool;
             }else{
-                winAmount = room.pool * room.config.eOdds;
-                room.players.find(x=>x.role==="B").chip += winAmount;
+                room.playerB.chip += room.pool;
             }
-            broadcast({type:"showAllCard"});
+            broadcast({
+                type:"showAllCard"
+            });
             setTimeout(()=>{
                 broadcast({
                     type:"result",
-                    msg:`开牌结算！玩家${winner}获胜，赢得${winAmount}筹码`
+                    winner:winner,
+                    pool:room.pool,
+                    msg:`开牌结算！玩家${winner}赢走底池${room.pool}`
                 });
                 room.pool = 200;
-                broadcastSync();
+                broadcast({
+                    type:"syncState",
+                    chipA: room.playerA.chip,
+                    chipB: room.playerB.chip,
+                    pool: room.pool
+                })
             },1200)
         }
 
-        if(data.type === "saveConfig"){
-            room.config.pRate = Number(data.pRate);
-            room.config.eRate = Number(data.eRate);
-            room.config.pOdds = Number(data.pOdds);
-            room.config.eOdds = Number(data.eOdds);
-            room.config.forceBig = Number(data.forceBig);
-            sendTo(ws, {type:"msg", text:"✅ 配置保存成功，全局生效！"});
-        }
-
         if(data.type === "reset"){
-            clearGameTimer();
-            room.players.forEach(p=>{
-                p.ready = false;
-                p.chip = 1000;
-            })
+            room.playerA.ready = false;
+            room.playerB.ready = false;
+            room.playerA.chip = 1000;
+            room.playerB.chip = 1000;
             room.pool = 200;
             room.cards = {A:[], B:[]};
             room.gameOver = false;
             broadcast({
                 type:"reset",
-                chipA: room.players.find(x=>x.role==="A")?.chip,
-                chipB: room.players.find(x=>x.role==="B")?.chip,
+                chipA: room.playerA.chip,
+                chipB: room.playerB.chip,
                 pool: room.pool
             });
         }
     })
 
     ws.on('close', ()=>{
-        clearGameTimer();
-        const leavePlayerIndex = room.players.findIndex(p=>p.ws === ws);
-        if(leavePlayerIndex !== -1){
-            room.players.splice(leavePlayerIndex,1);
-            broadcast({type:"playerLeave"});
+        if(room.playerA.ws === ws){
+            room.playerA.ws = null;
+            room.playerA.ready = false;
+            broadcast({type:"playerLeave", role:"A"});
+        }
+        if(room.playerB.ws === ws){
+            room.playerB.ws = null;
+            room.playerB.ready = false;
+            broadcast({type:"playerLeave", role:"B"});
         }
     })
 })
 
 const PORT = process.env.PORT || 3000;
-httpServer.keepAliveTimeout = 120000;
-httpServer.headersTimeout = 120000;
-httpServer.listen(PORT, ()=>console.log("✅ 服务启动成功，Websocket就绪"));
+server.listen(PORT, ()=>console.log("服务启动成功"));
