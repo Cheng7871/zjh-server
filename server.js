@@ -90,13 +90,12 @@ wss.on('connection', (ws)=>{
             case "requestNextRound":
                 if(msg.role === "A") gameState.nextConfirmA = true;
                 if(msg.role === "B") gameState.nextConfirmB = true;
-                broadcast({type:"gameState", state:gameState}); // 同步状态，页面立刻刷新按钮
+                broadcast({type:"gameState", state:gameState});
                 if(gameState.nextConfirmA && gameState.nextConfirmB){
                     broadcast({type:"bothConfirmNext"});
                 }
                 break;
             case "openCard":
-                //开牌结算，扣除筹码、底池分配
                 let winner = "玩家A";
                 //你的原有牌型对比代码放这里
                 if(winner === "玩家A"){
@@ -105,14 +104,18 @@ wss.on('connection', (ws)=>{
                     gameState.chipB += gameState.pool;
                 }
                 gameState.pool = 0;
-                // 结算后检查是否有人输光筹码
+
+                // ==========【核心修复】==========
+                // 结算的时候，直接把后端gameState的showEnemyCard永久置true！！
+                gameState.showEnemyCard = true;
+                // 先广播最新的gameState，让所有人拿到showEnemyCard=true的状态
+                broadcast({type:"gameState", state:gameState});
+                // 再发结算弹窗事件
                 if(!checkGameOver()){
                     broadcast({type:"roundEndSequence", winner});
                 }
-                broadcast({type:"gameState", state:gameState});
                 break;
             case "fullResetGame":
-                //全局重置游戏
                 gameState = {
                     chipA:1000,
                     chipB:1000,
