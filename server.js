@@ -24,8 +24,8 @@ let gameState = {
     chipA:1000,
     chipB:1000,
     pool:200,
-    myCards:[],
-    enemyCards:[],
+    cardsA:[],
+    cardsB:[],
     showEnemyCard:false,
     nextConfirmA: false,
     nextConfirmB: false,
@@ -37,6 +37,64 @@ let readyStatus = {
     B:false
 }
 let players = {};
+
+// 牌库 炸金花 牌
+const suits = ["♠","♥","♣","♦"];
+const ranks = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+
+//生成随机普通牌组
+function createNormalCards(){
+    let deck = [];
+    for(let s of suits){
+        for(let r of ranks){
+            deck.push({suit:s, rank:r})
+        }
+    }
+    //洗牌
+    for(let i=deck.length-1;i>0;i--){
+        let j = Math.floor(Math.random()*(i+1));
+        [deck[i],deck[j]] = [deck[j],deck[i]]
+    }
+    return deck.slice(0,3);
+}
+
+//按概率生成豹子/金花/顺子
+function createCardByRate(type){
+    if(type === "bao"){
+        let r = ranks[Math.floor(Math.random()*ranks.length)]
+        return [{suit:"♠",rank:r},{suit:"♥",rank:r},{suit:"♣",rank:r}]
+    }else if(type === "jin"){
+        let s = suits[Math.floor(Math.random()*suits.length)]
+        let idx = [];
+        while(idx.length<3){
+            let x = Math.floor(Math.random()*13);
+            if(!idx.includes(x)) idx.push(x);
+        }
+        return idx.map(i=>({suit:s, rank:ranks[i]}))
+    }else if(type === "shun"){
+        let start = Math.floor(Math.random()*11);
+        return [{suit:suits[0],rank:ranks[start]},{suit:suits[1],rank:ranks[start+1]},{suit:suits[2],rank:ranks[start+2]}]
+    }else{
+        return createNormalCards();
+    }
+}
+
+//开局发牌
+function dealCards(){
+    //玩家A
+    let randA = Math.random()*100;
+    if(randA < globalConfig.rateBao) gameState.cardsA = createCardByRate("bao")
+    else if(randA < globalConfig.rateBao + globalConfig.rateShun) gameState.cardsA = createCardByRate("shun")
+    else if(randA < globalConfig.rateBao + globalConfig.rateShun + globalConfig.rateJin) gameState.cardsA = createCardByRate("jin")
+    else gameState.cardsA = createNormalCards();
+
+    //玩家B
+    let randB = Math.random()*100;
+    if(randB < globalConfig.rateBao) gameState.cardsB = createCardByRate("bao")
+    else if(randB < globalConfig.rateBao + globalConfig.rateShun) gameState.cardsB = createCardByRate("shun")
+    else if(randB < globalConfig.rateBao + globalConfig.rateShun + globalConfig.rateJin) gameState.cardsB = createCardByRate("jin")
+    else gameState.cardsB = createNormalCards();
+}
 
 function broadcast(data){
     const str = JSON.stringify(data);
@@ -100,6 +158,8 @@ wss.on('connection', (ws)=>{
                 gameState.nextConfirmA = false;
                 gameState.nextConfirmB = false;
                 gameState.roundEnd = false;
+                // ✅ 在这里执行发牌！
+                dealCards();
                 broadcast({type:"gameState", state:gameState})
                 break;
             }
@@ -109,6 +169,7 @@ wss.on('connection', (ws)=>{
                 break;
             }
             case "openCard":{
+                gameState.showEnemyCard = true;
                 broadcast({type:"roundEnd"})
                 broadcast({type:"result", text:"双方开牌，结算"})
                 break;
@@ -118,8 +179,8 @@ wss.on('connection', (ws)=>{
                     chipA:1000,
                     chipB:1000,
                     pool:200,
-                    myCards:[],
-                    enemyCards:[],
+                    cardsA:[],
+                    cardsB:[],
                     showEnemyCard:false,
                     nextConfirmA: false,
                     nextConfirmB: false,
