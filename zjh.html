@@ -42,6 +42,9 @@
         #loginModal{
             display:flex;
         }
+        #resultModal{
+            text-align:center;
+        }
     </style>
 </head>
 <body>
@@ -53,6 +56,13 @@
             <input type="text" id="nameInput" placeholder="输入名字：1 或者 2">
             <br>
             <button onclick="login()">登录进入</button>
+        </div>
+    </div>
+
+    <div id="resultModal" class="modal">
+        <div class="modal-box">
+            <h2 id="resultText"></h2>
+            <button onclick="closeResultModal()">确定</button>
         </div>
     </div>
 
@@ -98,8 +108,7 @@
         <div class="modal-box">
             <h3>后台设置</h3>
             <div>己方爆率(0~100)：<input type="number" id="pRate" min="0" max="100"></div>
-            <div>对手爆率(0~100)：<input type="number" id="eRate" min="0" max="100"></div>
-            <div>本局强制大牌(0关/1开)：<input type="number" id="forceBig" min="0" max="1"></div>
+            <div>对手爆率(0~100)：<input type="number" id="forceBig" min="0" max="1"></div>
             <div>你的筹码：<input type="number" id="setMyChip"></div>
             <div>对手筹码：<input type="number" id="setEnemyChip"></div>
             <div>底池：<input type="number" id="setPool"></div>
@@ -130,6 +139,7 @@ function login(){
     const name = document.getElementById("nameInput").value.trim();
     ws.send(JSON.stringify({type:"login", name:name}));
 }
+function closeResultModal(){document.getElementById("resultModal").style.display="none";}
 
 function render(){
     document.getElementById("myChip").innerText = gameState.myChip;
@@ -221,6 +231,10 @@ ws.onmessage = function(evt){
     if(msg.type === "showAllCard"){
         gameState.showEnemyCard = true;
         render();
+    }
+    if(msg.type === "result"){
+        document.getElementById("resultText").innerText = msg.msg;
+        document.getElementById("resultModal").style.display = "flex";
     }
     if(msg.type === "reset"){
         if(myRole === "A"){
