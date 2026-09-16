@@ -1,9 +1,9 @@
 {
   "name": "zjh-game",
   "version": "1.0.0",
-  "main": "yhserver.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node yhserver.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.21.1",
