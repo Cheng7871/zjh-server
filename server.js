@@ -14,7 +14,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 // 密码写在这里，前端看不到
-const ADMIN_PASSWORD = "123456";
+const ADMIN_PASSWORD = "200989";
 let roleOccupied = {
     A: false,
     B: false
