@@ -204,9 +204,9 @@ function startNewRound(){
     });
     broadcast({ type: "gameState", state: gameState });
 }
-//【修复：指向真实页面 yhzjh.html】
+//【修复：指向真实页面 zjh.html】
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, "yhzjh.html"));
+    res.sendFile(path.join(__dirname, "zjh.html"));
 });
 wss.on('connection', (ws) => {
     let myRole = null;
