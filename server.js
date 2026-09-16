@@ -1,10 +1,12 @@
-//【仅新增】全局崩溃捕获，仅此一处新增
+// 文件开头
 process.on('uncaughtException', (err) => {
-    console.error("【全局崩溃异常】",err);
-})
-process.on('unhandledRejection',(reason)=>{
-    console.error("【Promise异常】",reason);
-})
+    console.error("【全局崩溃异常】", err);
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error("【Promise异常】", reason);
+    process.exit(1);
+});
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
