@@ -1,7 +1,7 @@
 {
   "name": "zjh-game",
   "version": "1.0.0",
-  "description": "2p炸金花游戏",
+  "description": "联机炸金花游戏",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
